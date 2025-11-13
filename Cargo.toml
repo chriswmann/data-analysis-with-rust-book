@@ -17,8 +17,9 @@ connectorx = { version = "0.4.4", features = ["src_postgres", "dst_polars"] }
 # Need to stick with 0.51 as there's a dependency incompatibility with 0.52
 polars = { version = "0.51.0", features = [
   # "abs",          # Absolute value
-  # "aws",          # Read/write cloud (minio)
-  "csv", # Read/write CSVs
+  "aws",   # Read/write cloud (minio)
+  "cloud",
+  "csv",   # Read/write CSVs
   # "cum_agg",      # Cumulative aggregate statistics
   # "fmt",          # Format tables as markdown
   "is_in",   # List filter

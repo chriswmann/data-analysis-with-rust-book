@@ -14,6 +14,7 @@ use data::etl::{
 use data::rdbms::{PostgresConn, drop_table_if_exists, load_lf_dynamic};
 use data::synthesise::expand_census_data;
 
+use crate::data::blob::{S3Client, S3Config};
 use crate::data::rdbms::get_table_count_if_exists;
 
 #[tokio::main]
@@ -81,10 +82,38 @@ async fn main() -> anyhow::Result<()> {
         drop_table_if_exists(&pool, "census").await?;
 
         println!("Loading CSV file into postgres...");
-        load_lf_dynamic(&pool, lf, "census").await?;
+        load_lf_dynamic(&pool, lf.clone(), "census").await?;
     } else {
         println!("{} rows in census table.", census_count);
     }
+
+    let s3_config = S3Config {
+        region: "eu-west-1".into(),
+        url: "http://127.0.0.1:9000".into(),
+        username: "minioadmin".into(),
+        password: "minioadmin".into(),
+    };
+
+    let s3_client = S3Client::new(s3_config, "census".into());
+    if !s3_client.bucket_exists().await? {
+        s3_client.create_bucket().await?;
+    };
+
+    let object_exists = s3_client.object_exists("large/census.parquet").await?;
+    if !object_exists {
+        s3_client
+            .stream_chunked_parquet_to_s3(
+                large_census_parquet_path.to_str().unwrap(),
+                "large/census.parquet",
+            )
+            .await?;
+    }
+    let bucket_objects = s3_client.list_objects().await?;
+    println!(
+        "Found these objects in the {} bucket:\n{:#?}",
+        s3_client.get_bucket_name(),
+        &bucket_objects
+    );
 
     Ok(())
 }
