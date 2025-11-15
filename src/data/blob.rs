@@ -1,10 +1,7 @@
 use anyhow::Result;
 use aws_sdk_s3::{
-    error::SdkError,
-    operation::{complete_multipart_upload, head_object::HeadObjectError, upload_part},
-    primitives::ByteStream,
+    error::SdkError, operation::head_object::HeadObjectError, primitives::ByteStream,
 };
-use polars::prelude::{LazyFrame, ParquetWriteOptions, PlPath, SinkOptions, SinkTarget};
 use tokio::io::AsyncReadExt;
 use tracing::debug;
 
@@ -75,7 +72,13 @@ impl S3Client {
     }
 
     pub(crate) async fn delete_bucket(&self) -> Result<()> {
-        let objects_to_delete = self.client.list_objects_v2().send().await?;
+        debug!("Deleting bucket {}.", &self.bucket_name);
+        let objects_to_delete = self
+            .client
+            .list_objects_v2()
+            .bucket(&self.bucket_name)
+            .send()
+            .await?;
         for object in objects_to_delete.contents() {
             if let Some(key) = object.key() {
                 self.client
@@ -86,7 +89,12 @@ impl S3Client {
                     .await?;
             }
         }
-        self.client.delete_bucket().send().await?;
+        self.client
+            .delete_bucket()
+            .bucket(&self.bucket_name)
+            .send()
+            .await?;
+        debug!("Bucket deleted.");
         Ok(())
     }
 

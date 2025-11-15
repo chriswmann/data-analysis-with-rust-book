@@ -19,6 +19,10 @@ pub(crate) struct Args {
     /// Rebuild postgres DB
     #[arg(long, default_value_t = false)]
     pub(crate) rebuild_db: bool,
+
+    /// Delete bucket
+    #[arg(long, default_value_t = false)]
+    pub(crate) delete_bucket: bool,
 }
 
 impl Args {

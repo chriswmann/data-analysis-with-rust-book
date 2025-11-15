@@ -92,9 +92,13 @@ async fn main() -> anyhow::Result<()> {
         url: "http://127.0.0.1:9000".into(),
         username: "minioadmin".into(),
         password: "minioadmin".into(),
-    };
+ };
 
     let s3_client = S3Client::new(s3_config, "census".into());
+
+    if args.delete_bucket {
+        s3_client.delete_bucket().await?;
+    };
     if !s3_client.bucket_exists().await? {
         s3_client.create_bucket().await?;
     };
