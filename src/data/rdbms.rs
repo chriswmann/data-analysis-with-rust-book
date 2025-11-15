@@ -1,8 +1,15 @@
+//! Helpers for loading Polars frames into PostgreSQL via the COPY protocol.
+//!
+//! The module targets high-throughput ingestion by streaming CSV chunks directly through
+//! `COPY FROM STDIN`, bypassing row-by-row inserts and taking advantage of Postgres's
+//! optimised bulk-load path.
+
 use anyhow::Result;
 use polars::prelude::{CsvWriter, DataType, LazyFrame, SchemaExt, SerWriter};
 use sqlx::{Pool, Postgres};
 use tracing::debug;
 
+/// Encapsulates the connection parameters for a Postgres database.
 pub(crate) struct PostgresConn {
     pub(crate) user: String,
     pub(crate) password: String,
@@ -12,6 +19,7 @@ pub(crate) struct PostgresConn {
 }
 
 impl PostgresConn {
+    /// Formats the connection details into a standard PostgreSQL connection URI.
     pub(crate) fn get_connection_string(&self) -> String {
         format!(
             "postgresql://{}:{}@{}:{}/{}",
@@ -20,6 +28,13 @@ impl PostgresConn {
     }
 }
 
+/// Streams a `LazyFrame` into Postgres using the COPY protocol, automatically inferring
+/// and creating the target table schema.
+///
+/// The frame is sliced into 100k-row chunks to keep memory usage bounded, each chunk
+/// is rendered to headerless CSV on a blocking task, then fed into the `COPY FROM STDIN`
+/// stream. This keeps the async runtime free while Polars performs CPU-bound work and
+/// allows the database to ingest data faster than row-by-row inserts.
 #[tracing::instrument(skip(lf))]
 pub(crate) async fn load_lf_dynamic(
     pool: &Pool<Postgres>,
@@ -29,7 +44,7 @@ pub(crate) async fn load_lf_dynamic(
     let mut lf = lf;
     let schema = lf.collect_schema()?;
 
-    // Extract column names and types
+    // Extract column names and types for dynamic DDL
     let column_names: Vec<String> = schema.iter_fields().map(|f| f.name().to_string()).collect();
     let quoted_column_names: Vec<String> =
         column_names.iter().map(|n| format!("\"{}\"", n)).collect();
@@ -40,7 +55,7 @@ pub(crate) async fn load_lf_dynamic(
 
     create_dynamic_table(pool, table_name, &quoted_column_names, &column_types).await?;
 
-    // Get a raw connection from the pool for the COPY protocol
+    // Acquire a raw connection from the pool for the COPY protocol
     let mut conn = pool.acquire().await?;
 
     // Start COPY FROM STDIN
@@ -51,7 +66,6 @@ pub(crate) async fn load_lf_dynamic(
     );
     debug!("Copy query: {}", &copy_query);
 
-    // Get the copy in stream from the connection
     let mut copy_in = conn.copy_in_raw(&copy_query).await?;
 
     const ROWS_PER_BATCH: u32 = 100_000;
@@ -88,6 +102,9 @@ pub(crate) async fn load_lf_dynamic(
     Ok(())
 }
 
+/// Creates a table with dynamically inferred column types, derived from the Polars schema.
+///
+/// Uses `IF NOT EXISTS` to avoid clobbering an existing table with the same name.
 #[tracing::instrument]
 async fn create_dynamic_table(
     pool: &Pool<Postgres>,
@@ -112,6 +129,8 @@ async fn create_dynamic_table(
     Ok(())
 }
 
+/// Maps a Polars `DataType` to its nearest Postgres equivalent, falling back to `TEXT`
+/// for unsupported types to ensure the ingestion never fails.
 fn map_polars_type_to_pg(dtype: &DataType) -> String {
     match dtype {
         DataType::Int32 => "INTEGER".into(),
@@ -122,19 +141,24 @@ fn map_polars_type_to_pg(dtype: &DataType) -> String {
     }
 }
 
+/// Drops the specified table after validating the name to prevent SQL injection.
+///
+/// Table names cannot be parameterised in SQL (unlike values), so the identifier is
+/// injected into the query string after confirming it contains only alphanumerics and
+/// underscores.
 #[tracing::instrument]
 pub(crate) async fn drop_table_if_exists(
     pool: &Pool<Postgres>,
     table_name: &str,
 ) -> Result<(), sqlx::Error> {
-    // Validate the table name first
+    // Validate the table name to avoid SQL injection and to ensure the column names are nicely styled
     if !table_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
         return Err(sqlx::Error::Protocol(format!(
             "Invalid table name ({table_name}): only alphanumeric characters and underscores allowed."
         )));
     }
 
-    // Use format! to build the query with validated identifier
+    // Build the query with the validated identifier
     // Note: SQL parameters ($1, $2) don't work for table names - they only work for values
     let query = format!("drop table if exists {}", table_name);
     debug!("Drop table query: {}", &query);
@@ -144,6 +168,10 @@ pub(crate) async fn drop_table_if_exists(
     Ok(())
 }
 
+/// Returns the row count for a table if it exists in the public schema, otherwise zero.
+///
+/// First checks `information_schema.tables` using a parameterised query, then issues
+/// a `COUNT(1)` on the validated table name to fetch the cardinality.
 pub(crate) async fn get_table_count_if_exists(
     table_name: &str,
     pool: &Pool<Postgres>,

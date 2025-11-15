@@ -1,6 +1,16 @@
+//! Command-line argument parsing for the data ingestion pipeline.
+//!
+//! This module defines the flags and path configuration needed to control where data is
+//! stored, whether to rebuild existing artefacts, and how to handle bucket lifecycle.
+//! All path-related arguments are resolved relative to a configurable project root.
+
 use clap::Parser;
 use std::{env, path};
 
+/// Command-line arguments controlling data paths and rebuild behaviour.
+///
+/// The CLI supports flexible path configuration (useful when running in containers or CI)
+/// and two boolean flags for forcing fresh ingestion into Postgres or MinIO.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub(crate) struct Args {
@@ -26,16 +36,24 @@ pub(crate) struct Args {
 }
 
 impl Args {
+    /// Returns the configured project root, falling back to the current working directory
+    /// if not explicitly provided via `--project-root`.
     fn get_project_root(&self) -> path::PathBuf {
         self.project_root
             .clone()
             .unwrap_or_else(|| env::current_dir().expect("Failed to get current working directory"))
     }
 
+    /// Resolves the data directory by joining the data relative path onto the project root.
+    ///
+    /// This directory will contain both `raw/` and `large/` subdirectories for the census
+    /// datasets at different stages of processing.
     pub(crate) fn get_data_path(&self) -> path::PathBuf {
         self.get_project_root().join(&self.data_relative_path)
     }
 
+    /// Resolves the raw data directory where the original ONS CSV and intermediate artefacts
+    /// are stored before expansion.
     pub(crate) fn get_raw_data_path(&self) -> path::PathBuf {
         self.get_data_path().join(&self.raw_data_folder_name)
     }

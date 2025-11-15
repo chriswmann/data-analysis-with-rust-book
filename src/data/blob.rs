@@ -1,3 +1,8 @@
+//! Lightweight helpers around `aws_sdk_s3` tailored for the book's ingestion tasks.
+//!
+//! The module focuses on two scenarios: spinning up disposable buckets and streaming
+//! parquet artefacts without loading them entirely into memory.
+
 use anyhow::Result;
 use aws_sdk_s3::{
     error::SdkError, operation::head_object::HeadObjectError, primitives::ByteStream,
@@ -5,6 +10,7 @@ use aws_sdk_s3::{
 use tokio::io::AsyncReadExt;
 use tracing::debug;
 
+/// Minimal façade for the S3 operations required by the data workflows.
 pub(crate) struct S3Client {
     client: aws_sdk_s3::Client,
     region: String,
@@ -12,6 +18,7 @@ pub(crate) struct S3Client {
 }
 
 impl S3Client {
+    /// Constructs a client bound to the given bucket.
     pub(crate) fn new(config: S3Config, bucket_name: String) -> Self {
         let region = config.region.clone();
         let config = config.get_s3_config();
@@ -23,10 +30,12 @@ impl S3Client {
         }
     }
 
+    /// Returns a clone of the configured bucket name.
     pub(crate) fn get_bucket_name(&self) -> String {
         self.bucket_name.clone()
     }
 
+    /// Returns true if the configured bucket exists for the active credentials.
     pub(crate) async fn bucket_exists(&self) -> Result<bool> {
         let bucket_list = self.client.list_buckets().send().await?;
 
@@ -39,6 +48,7 @@ impl S3Client {
         Ok(bucket_found)
     }
 
+    /// Creates the configured bucket, honouring the region constraint.
     pub(crate) async fn create_bucket(&self) -> Result<()> {
         let constraint = aws_sdk_s3::types::BucketLocationConstraint::from(self.region.as_str());
         let cfg = aws_sdk_s3::types::CreateBucketConfiguration::builder()
@@ -54,6 +64,7 @@ impl S3Client {
         Ok(())
     }
 
+    /// Returns all object keys in the bucket, in lexicographic order.
     pub(crate) async fn list_objects(&self) -> Result<Vec<String>> {
         let aws_object_list = self
             .client
@@ -71,6 +82,7 @@ impl S3Client {
         Ok(object_list)
     }
 
+    /// Deletes every object then removes the bucket (intended for ephemeral datasets).
     pub(crate) async fn delete_bucket(&self) -> Result<()> {
         debug!("Deleting bucket {}.", &self.bucket_name);
         let objects_to_delete = self
@@ -98,6 +110,7 @@ impl S3Client {
         Ok(())
     }
 
+    /// Streams a parquet file to S3 using multipart upload to cap memory usage.
     pub(crate) async fn stream_chunked_parquet_to_s3(
         &self,
         file_path: &str,
@@ -113,6 +126,7 @@ impl S3Client {
         Ok(())
     }
 
+    /// Starts a multipart upload and returns the upload ID required for subsequent parts.
     async fn start_multipart_upload(&self, key: &str) -> Result<String> {
         let multipart = self
             .client
@@ -128,6 +142,7 @@ impl S3Client {
             .map(|s| s.to_string())
     }
 
+    /// Uploads a local file in 5 MiB parts and returns the metadata needed to finalise the upload.
     async fn upload_file_parts(
         &self,
         file_path: &str,
@@ -154,6 +169,8 @@ impl S3Client {
                 break;
             }
 
+            // By trimming the buffer we keep heap usage bounded and satisfy the minimum
+            // part size for S3 (except for the final, potentially smaller, chunk).
             buffer.truncate(bytes_read);
 
             debug!("Uploading part {} with {} bytes", part_number, bytes_read);
@@ -186,6 +203,7 @@ impl S3Client {
         Ok(completed_parts)
     }
 
+    /// Finalises the multipart upload using the collected part metadata.
     async fn complete_multipart_upload(
         &self,
         key: &str,
@@ -208,6 +226,8 @@ impl S3Client {
         Ok(())
     }
 
+    /// Returns true if the given key exists, treating 404 as absence to avoid confusing network
+    /// errors with a missing object.
     pub(crate) async fn object_exists(&self, key: &str) -> Result<bool> {
         let response = self
             .client
@@ -229,6 +249,7 @@ impl S3Client {
     }
 }
 
+/// Configuration required to connect to an S3-compatible endpoint.
 pub(crate) struct S3Config {
     pub(crate) region: String,
     pub(crate) url: String,
@@ -237,6 +258,7 @@ pub(crate) struct S3Config {
 }
 
 impl S3Config {
+    /// Builds static credentials from the username/password pair.
     fn get_credentials(&self) -> aws_sdk_s3::config::Credentials {
         aws_sdk_s3::config::Credentials::new(
             self.username.clone(),
@@ -247,6 +269,7 @@ impl S3Config {
         )
     }
 
+    /// Assembles an SDK config pointing at the desired endpoint and region.
     fn get_s3_config(&self) -> aws_sdk_s3::Config {
         let creds = self.get_credentials();
         aws_sdk_s3::config::Builder::new()

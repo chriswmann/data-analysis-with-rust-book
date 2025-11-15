@@ -1,3 +1,11 @@
+//! High-level extract and load helpers built for the book's datasets.
+//!
+//! The routines here focus on two workflows:
+//! 1. Fetching CSV assets (either from disk or over HTTP) and presenting them as lazy
+//!    Polars plans ready for downstream transforms.
+//! 2. Persisting large frames back to disk, keeping async boundaries explicit so callers
+//!    can orchestrate ingestion pipelines without blocking.
+
 use std::io::Cursor;
 use std::path;
 
@@ -6,45 +14,11 @@ use polars::prelude::*;
 use tokio::{self, fs};
 use tracing::debug;
 
-/// Loads a CSV file from a URL into a Polars LazyFrame.
+/// Downloads a remote CSV and exposes it as a `LazyFrame`.
 ///
-/// This function downloads CSV data from a remote URL via HTTP(S), buffers it entirely
-/// in memory, then parses it into a Polars DataFrame and returns it as a LazyFrame for
-/// efficient lazy evaluation.
-///
-/// # Arguments
-///
-/// * `url` - A string slice containing the HTTP(S) URL of the CSV file to download
-///
-/// # Returns
-///
-/// * `Result<LazyFrame>` - A LazyFrame containing the parsed CSV data, or an error if:
-///   - The HTTP request fails (network error, invalid URL, 4xx/5xx status codes)
-///   - The response body cannot be read into memory
-///   - The CSV parsing fails (malformed CSV, encoding issues)
-///
-/// # Implementation Notes
-///
-/// - **Memory usage**: The entire CSV file is downloaded into memory before parsing.
-///   For very large files (multiple GB), this may cause high memory consumption.
-/// - **No size limit**: Unlike the default ureq behavior, this implementation uses
-///   `read_to_vec()` which bypasses ureq's 10MB response size limit, allowing
-///   downloads of arbitrarily large files (limited only by available RAM).
-/// - **Why Cursor?**: Polars' `CsvReader` requires types implementing `MmapBytesReader`.
-///   Since ureq's `Body` doesn't implement this trait, we buffer the data into a
-///   `Vec<u8>` and wrap it in a `Cursor`, which does implement the required trait.
-///
-/// # Examples
-///
-/// ```no_run
-/// # use anyhow::Result;
-/// # fn main() -> Result<()> {
-/// let lf = load_csv_from_url("https://example.com/data.csv")?;
-/// let df = lf.collect()?; // Evaluate the lazy operations
-/// println!("{}", df);
-/// # Ok(())
-/// # }
-/// ```
+/// The HTTP body is buffered into memory, wrapped in a `Cursor`, then parsed with the
+/// eager `CsvReader` before being converted into a lazy plan so the caller can append
+/// projections or filters without triggering execution.
 #[tracing::instrument]
 pub(crate) async fn load_csv_from_url(url: &str) -> Result<LazyFrame> {
     // Make an HTTP GET request to download the CSV file
@@ -65,7 +39,8 @@ pub(crate) async fn load_csv_from_url(url: &str) -> Result<LazyFrame> {
     Ok(data.lazy())
 }
 
-/// Try to load a file locally in case it's already been downloaded.
+/// Attempts to hydrate a `LazyFrame` from an on-disk CSV, failing fast if the path is
+/// absent or invalid UTF-8.
 #[tracing::instrument]
 fn try_read_csv_to_lf(file_path: &path::Path) -> Result<LazyFrame> {
     if !file_path.exists() {
@@ -83,6 +58,10 @@ fn try_read_csv_to_lf(file_path: &path::Path) -> Result<LazyFrame> {
     Ok(lf)
 }
 
+/// Collects a `LazyFrame` on a blocking task and streams the rows to a CSV writer.
+///
+/// The hand-off to `tokio::spawn_blocking` protects the async runtime from CPU-bound
+/// Polars work, while the Tokio file handle keeps the operation fully asynchronous.
 #[tracing::instrument(skip(lf))]
 pub(crate) async fn write_lf_to_csv(lf: LazyFrame, file_path: &path::Path) -> Result<()> {
     let file = fs::File::create(file_path).await?;
@@ -94,7 +73,8 @@ pub(crate) async fn write_lf_to_csv(lf: LazyFrame, file_path: &path::Path) -> Re
     Ok(())
 }
 
-/// Try to load a file locally in case it's already been downloaded.
+/// Lazily scans a parquet file, logging the path for easier traceability when multiple
+/// artefacts live side-by-side on disk.
 #[tracing::instrument]
 pub(crate) fn try_read_parquet_to_lf(file_path: &path::Path) -> Result<LazyFrame> {
     if !file_path.exists() {
@@ -113,6 +93,8 @@ pub(crate) fn try_read_parquet_to_lf(file_path: &path::Path) -> Result<LazyFrame
     Ok(lf)
 }
 
+/// Writes a collected `LazyFrame` into parquet, mirroring the CSV helper but targeting
+/// columnar storage for downstream analytics.
 #[tracing::instrument(skip(lf))]
 pub(crate) async fn write_lf_to_parquet(lf: LazyFrame, file_path: &path::Path) -> Result<()> {
     let file = fs::File::create(file_path).await?;
@@ -124,6 +106,8 @@ pub(crate) async fn write_lf_to_parquet(lf: LazyFrame, file_path: &path::Path) -
     Ok(())
 }
 
+/// Returns a `LazyFrame` sourced from a cached CSV when available, falling back to a
+/// remote download that is persisted locally for future runs.
 #[tracing::instrument]
 pub(crate) async fn get_data(file_path: &path::Path, url: &str) -> Result<LazyFrame> {
     match try_read_csv_to_lf(file_path) {
@@ -144,6 +128,8 @@ pub(crate) async fn get_data(file_path: &path::Path, url: &str) -> Result<LazyFr
     }
 }
 
+/// Projects the wide census schema down to the abbreviations used across the chapter,
+/// keeping the intent explicit within a single select.
 #[tracing::instrument(skip(lf))]
 pub(crate) fn shorten_census_column_names(lf: LazyFrame) -> LazyFrame {
     lf.select([
