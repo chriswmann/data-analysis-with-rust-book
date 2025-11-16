@@ -3,6 +3,21 @@ name = "data-analysis-with-rust-book"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "data_analysis_with_rust_book"
+
+[[bin]]
+name = "data-analysis-with-rust-book"
+path = "src/bin/main.rs"
+
+[[example]]
+name = "etl_example"
+path = "examples/etl_only.rs"
+
+[[example]]
+name = "summary_demo"
+path = "examples/summary_demo.rs"
+
 [dependencies]
 anyhow = "1.0.86"
 aws-sdk-s3 = { version = "1.111.0", features = ["behavior-version-latest"] }
