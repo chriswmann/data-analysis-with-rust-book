@@ -5,15 +5,15 @@
 //! guards itself with filesystem or database existence checks so repeated runs remain fast
 //! and idempotent.
 
-use clap::Parser;
 use tokio::fs;
 use tracing::debug;
-use tracing_subscriber::prelude::*;
 
 mod cli;
 mod data;
+mod pipeline;
 
-use cli::Args;
+pub use crate::cli::Args;
+use data::RAW_URL;
 use data::etl::{
     get_data, shorten_census_column_names, try_read_parquet_to_lf, write_lf_to_csv,
     write_lf_to_parquet,
@@ -24,7 +24,7 @@ use data::synthesise::expand_census_data;
 use crate::data::blob::{S3Client, S3Config};
 use crate::data::rdbms::get_table_count_if_exists;
 
-/// Main execution flow, orchestrating census data acquisition, expansion, and persistence
+/// Main ETL flow, orchestrating census data acquisition, expansion, and persistence
 /// into both Postgres (via COPY protocol) and MinIO (via S3 multipart upload).
 ///
 /// The flow is split into five stages:
@@ -33,17 +33,9 @@ use crate::data::rdbms::get_table_count_if_exists;
 /// 3. Connect to Postgres and populate the census table if row counts are incomplete.
 /// 4. Configure S3 and optionally recreate the bucket.
 /// 5. Upload the large parquet artefact if it's missing from object storage.
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Initialise structured logging with tracing, letting RUST_LOG control verbosity
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
+pub async fn run(args: Args) -> anyhow::Result<()> {
     // Define all of the local file paths, so we can check if they exist
     // to avoid unneeded processing
-    let args = Args::parse();
     let raw_data_path = args.get_raw_data_path();
     let large_data_path = args.get_data_path().join("large");
     let raw_census_csv_path = raw_data_path.join("census.csv");
@@ -55,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
         fs::create_dir_all(&raw_data_path).await?;
 
         // Download the ONS micro census teaching sample from the public endpoint
-        let micro_census_data_url = "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/publicmicrodatateachingsampleenglandandwalescensus2021/current/upload-publicmicrodatateachingsample.csv";
+        let micro_census_data_url = RAW_URL;
         let lf = get_data(raw_census_csv_path.as_path(), micro_census_data_url).await?;
 
         // Preview the raw data before any transformations

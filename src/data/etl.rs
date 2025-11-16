@@ -14,6 +14,8 @@ use polars::prelude::*;
 use tokio::{self, fs};
 use tracing::debug;
 
+pub(crate) const RAW_URL: &str = "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/publicmicrodatateachingsampleenglandandwalescensus2021/current/upload-publicmicrodatateachingsample.csv";
+
 /// Downloads a remote CSV and exposes it as a `LazyFrame`.
 ///
 /// The HTTP body is buffered into memory, wrapped in a `Cursor`, then parsed with the

@@ -11,9 +11,9 @@ use std::{env, path};
 ///
 /// The CLI supports flexible path configuration (useful when running in containers or CI)
 /// and two boolean flags for forcing fresh ingestion into Postgres or MinIO.
-#[derive(Parser, Debug)]
+#[derive(Clone, Parser, Debug)]
 #[command(version, about, long_about = None)]
-pub(crate) struct Args {
+pub struct Args {
     /// Project root absolute path (defaults to current working directory)
     #[arg(long)]
     project_root: Option<path::PathBuf>,
