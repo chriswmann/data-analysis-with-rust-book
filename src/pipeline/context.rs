@@ -34,6 +34,30 @@ impl Context {
     }
 }
 
+impl std::fmt::Display for Context {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "Args: {:?}, Raw Frame: {:?}, Expanded Frame: {:?}, DB Pool: {:?}, Cache Dir: {}",
+            self.args,
+            self.raw_frame.clone().map_or("None".to_string(), |lf| lf
+                .limit(5)
+                .collect()
+                .unwrap()
+                .to_string()),
+            self.expanded_frame
+                .clone()
+                .map_or("None".to_string(), |lf| lf
+                    .limit(5)
+                    .collect()
+                    .unwrap()
+                    .to_string()),
+            self.db_pool,
+            self.cache_dir.to_str().unwrap(),
+        )
+    }
+}
+
 pub struct ContextBuilder {
     args: Args,
     raw_frame: Option<LazyFrame>,

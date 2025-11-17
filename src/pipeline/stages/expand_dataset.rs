@@ -45,6 +45,7 @@ impl Stage for ExpandDataset {
             tokio::task::spawn_blocking(move || large_lf.limit(5).collect()).await??;
         println!("Head after expansion: {:?}", large_data_head);
 
+        ctx.expanded_frame = Some(lf);
         Ok(ctx)
     }
 }

@@ -11,7 +11,7 @@ use tokio::io::AsyncReadExt;
 use tracing::debug;
 
 /// Minimal façade for the S3 operations required by the data workflows.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct S3Client {
     client: aws_sdk_s3::Client,
     region: String,

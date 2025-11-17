@@ -5,7 +5,7 @@
 //! All path-related arguments are resolved relative to a configurable project root.
 
 use clap::Parser;
-use std::{env, path};
+use std::{env, fmt, path};
 
 /// Command-line arguments controlling data paths and rebuild behaviour.
 ///
@@ -56,5 +56,21 @@ impl Args {
     /// are stored before expansion.
     pub(crate) fn get_raw_data_path(&self) -> path::PathBuf {
         self.get_data_path().join(&self.raw_data_folder_name)
+    }
+}
+
+impl fmt::Display for Args {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{:?}, {:?}, {:?}, {}, {}",
+            self.project_root
+                .as_ref()
+                .map_or("None".to_string(), |p| format!("{:?}", p)),
+            self.data_relative_path,
+            self.raw_data_folder_name,
+            self.rebuild_db,
+            self.delete_bucket
+        )
     }
 }
