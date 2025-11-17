@@ -3,6 +3,8 @@
 Code for working through the [Data Analysis in Rust Book](https://ericfecteau.ca/data/rust-data-analysis/index.html).
 This binary downloads an ONS census teaching dataset, expands it, loads it into Postgres, and uploads artefacts to MinIO.
 
+I wrote this code to learn more rust, rather than to learn data analysis. As such, it's over engineered, with builder patterns used once a configurable pipeline that's only used in one configuration and various bits of functionality that aren't used anywhere (yet), for example.
+
 ### Start dependencies (Postgres and MinIO)
 
 From the project root:

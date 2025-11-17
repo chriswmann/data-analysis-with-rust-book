@@ -6,7 +6,6 @@
 //! 2. Persisting large frames back to disk, keeping async boundaries explicit so callers
 //!    can orchestrate ingestion pipelines without blocking.
 
-use std::io::Cursor;
 use std::path;
 
 use anyhow::Result;
@@ -22,26 +21,36 @@ pub(crate) const RAW_URL: &str = "https://www.ons.gov.uk/file?uri=/peoplepopulat
 /// eager `CsvReader` before being converted into a lazy plan so the caller can append
 /// projections or filters without triggering execution.
 #[tracing::instrument]
-pub(crate) async fn load_csv_from_url(url: &str) -> Result<LazyFrame> {
+pub(crate) async fn fetch_and_cache_csv(url: &str, file_path: &path::Path) -> Result<LazyFrame> {
     // Make an HTTP GET request to download the CSV file
-    let response = reqwest::get(url).await?.text().await?;
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url)
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (X11; Linux x86_64) data-analysis-with-rust-book/0.1",
+        )
+        .header(
+            "Accept",
+            "text/csv,application/octet-stream;q=0.9,*/*;q=0.1",
+        )
+        .send()
+        .await?;
 
-    // Read the entire response body into a byte vector
-    // Note: read_to_vec() bypasses ureq's default 10MB size limit
-    let bytes = response.as_bytes();
-
-    // Wrap the byte vector in a Cursor to provide the MmapBytesReader trait
-    // required by Polars' CsvReader
-    let cursor = Cursor::new(bytes);
-
-    // Parse the CSV data into an eager DataFrame
-    let data = CsvReader::new(cursor).finish()?;
+    let status = response.status();
+    if status != reqwest::StatusCode::OK {
+        anyhow::bail!("Failed to download CSV: {}", status);
+    }
+    // Write to disk first so we can reuse try_read_csv_to_lf (which has infer_schema_length set
+    // and which is needed to read the file properly)
+    fs::write(file_path, response.bytes().await?).await?;
+    let lf = try_read_csv_to_lf(file_path)?;
 
     // Convert to a LazyFrame for efficient query optimisation
-    Ok(data.lazy())
+    Ok(lf)
 }
 
-/// Attempts to hydrate a `LazyFrame` from an on-disk CSV, failing fast if the path is
+/// Attempts to read a `LazyFrame` from an on-disk CSV, failing fast if the path is
 /// absent or invalid UTF-8.
 #[tracing::instrument]
 fn try_read_csv_to_lf(file_path: &path::Path) -> Result<LazyFrame> {
@@ -123,8 +132,7 @@ pub(crate) async fn get_data(file_path: &path::Path, url: &str) -> Result<LazyFr
                 file_path.display(),
                 url
             );
-            let lf = load_csv_from_url(url).await?;
-            write_lf_to_csv(lf.clone(), file_path).await?;
+            let lf = fetch_and_cache_csv(url, file_path).await?;
             Ok(lf)
         }
     }
