@@ -39,7 +39,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         database: "dair".into(),
     };
 
-    let db_uri = postgres_conn.get_connection_string();
+    let db_uri = postgres_conn.get_db_connection_string();
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(20)
         .connect(&db_uri)

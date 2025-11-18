@@ -5,7 +5,8 @@
 //! optimised bulk-load path.
 
 use anyhow::Result;
-use polars::prelude::{CsvWriter, DataType, LazyFrame, SchemaExt, SerWriter};
+use connectorx::prelude::*;
+use polars::prelude::{CsvWriter, DataType, IntoLazy, LazyFrame, SchemaExt, SerWriter};
 use sqlx::{Pool, Postgres};
 use tracing::debug;
 
@@ -20,10 +21,17 @@ pub(crate) struct PostgresConn {
 
 impl PostgresConn {
     /// Formats the connection details into a standard PostgreSQL connection URI.
-    pub(crate) fn get_connection_string(&self) -> String {
+    pub(crate) fn get_db_connection_string(&self) -> String {
         format!(
             "postgresql://{}:{}@{}:{}/{}",
             self.user, self.password, self.host, self.port, self.database
+        )
+    }
+
+    pub(crate) fn get_instance_connection_string(&self) -> String {
+        format!(
+            "postgresql://{}:{}@{}:{}",
+            self.user, self.password, self.host, self.port,
         )
     }
 }
@@ -200,4 +208,24 @@ pub(crate) async fn get_table_count_if_exists(
     };
 
     Ok(row_count)
+}
+
+pub(crate) async fn load_lf_from_postgres(
+    table_name: &str,
+    pg_conn: &PostgresConn,
+) -> Result<LazyFrame> {
+    let uri = pg_conn.get_instance_connection_string();
+    let source_conn = SourceConn::try_from(uri.as_str())?;
+    // Prepare query (london, aged 15 years and under)
+    let query = &[CXQuery::from(
+        "SELECT * FROM census WHERE region = 'E12000007' and age_group = 1",
+    )];
+
+    // ConnectorX query PostgreSQL and return Polars object
+    let lf = get_arrow(&source_conn, None, query, None)
+        .unwrap()
+        .polars()
+        .unwrap()
+        .lazy();
+    Ok(lf)
 }

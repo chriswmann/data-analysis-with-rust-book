@@ -51,4 +51,9 @@ cargo run -- --data-relative-path my-data --rebuild-db
 ```
 
 ### License
+
 This code is licensed under the [Unlicense](./LICENSE-UNLICENSE) or [MIT](./LICENSE-MIT) licenses, at your option.
+
+### Patched connector-x
+
+The code includes a local copy of connector-x that has been patched to use polars 0.52, to avoid issues with incompatible polars dependency versions.
