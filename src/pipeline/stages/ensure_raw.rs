@@ -12,6 +12,7 @@ impl Stage for LoadRawData {
     }
 
     async fn run(self: Box<Self>, mut ctx: Context) -> Result<Context> {
+        println!("Running stage {}...", self.name());
         println!("Ensuring raw census artefacts exist - downloading and processing if needed...");
         let raw_data_path = &ctx.cache_dir.join("raw");
         fs::create_dir_all(&raw_data_path).await?;

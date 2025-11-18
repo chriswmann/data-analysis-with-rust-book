@@ -26,9 +26,9 @@ pub struct Args {
     #[arg(long, default_value = "raw")]
     raw_data_folder_name: path::PathBuf,
 
-    /// Rebuild postgres DB
+    /// Delete postgres DB table
     #[arg(long, default_value_t = false)]
-    pub(crate) rebuild_db: bool,
+    pub(crate) delete_table: bool,
 
     /// Delete bucket
     #[arg(long, default_value_t = false)]
@@ -69,7 +69,7 @@ impl fmt::Display for Args {
                 .map_or("None".to_string(), |p| format!("{:?}", p)),
             self.data_relative_path,
             self.raw_data_folder_name,
-            self.rebuild_db,
+            self.delete_table,
             self.delete_bucket
         )
     }

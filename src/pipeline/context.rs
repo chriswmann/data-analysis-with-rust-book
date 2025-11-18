@@ -17,7 +17,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn from_args(args: &Args) -> Result<Self> {
+    pub fn _from_args(args: &Args) -> Result<Self> {
         let cache_dir = args.get_data_path();
         Ok(Self {
             args: args.clone(),
@@ -91,12 +91,12 @@ impl ContextBuilder {
         }
     }
 
-    pub fn with_raw_frame(mut self, raw_frame: LazyFrame) -> Self {
+    pub fn _with_raw_frame(mut self, raw_frame: LazyFrame) -> Self {
         self.raw_frame = Some(raw_frame);
         self
     }
 
-    pub fn with_expanded_frame(mut self, expanded_frame: LazyFrame) -> Self {
+    pub fn _with_expanded_frame(mut self, expanded_frame: LazyFrame) -> Self {
         self.expanded_frame = Some(expanded_frame);
         self
     }

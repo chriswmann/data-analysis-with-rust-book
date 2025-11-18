@@ -21,7 +21,7 @@ impl Pipeline {
         Ok(Self { stages })
     }
 
-    pub fn with_stage(mut self, stage: Box<dyn Stage>) -> Self {
+    pub fn _with_stage(mut self, stage: Box<dyn Stage>) -> Self {
         self.stages.push(stage);
         self
     }

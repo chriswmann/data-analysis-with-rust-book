@@ -30,10 +30,6 @@ use data::rdbms::{PostgresConn, drop_table_if_exists, load_lf_dynamic};
 pub async fn run(args: Args) -> anyhow::Result<()> {
     // Define all of the local file paths, so we can check if they exist
     // to avoid unneeded processing
-    let raw_data_path = args.get_raw_data_path();
-    let large_data_path = args.get_data_path().join("large");
-    let raw_census_csv_path = raw_data_path.join("census.csv");
-    let large_census_parquet_path = large_data_path.join("census.parquet");
 
     // Stage 2: Configure and connect to Postgres (expected to be listening on port 6543)
     let postgres_conn = PostgresConn {
@@ -49,6 +45,11 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         .max_connections(20)
         .connect(&db_uri)
         .await?;
+
+    if args.delete_table {
+        debug!("Dropping census table.");
+        drop_table_if_exists(&pool, "census").await?;
+    }
     let s3_config = S3Config {
         region: "eu-west-1".into(),
         url: "http://127.0.0.1:9000".into(),
@@ -57,6 +58,10 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     };
 
     let s3_client = S3Client::new(s3_config, "census".into());
+
+    if args.delete_bucket {
+        s3_client.delete_bucket().await?;
+    };
 
     let ctx = Context::builder(&args)
         .with_cache_dir(args.get_data_path())
@@ -85,11 +90,6 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     // // Stage 3: Configure S3 to point at a local MinIO instance (port 9000), using the
     // // default admin credentials and the eu-west-1 region constraint
     //
-    // // If the user passed --delete-bucket, remove the existing bucket and all objects
-    // // before continuing
-    // if args.delete_bucket {
-    //     s3_client.delete_bucket().await?;
-    // };
     //
     // // Ensure the census bucket exists, creating it if necessary
     // if !s3_client.bucket_exists().await? {

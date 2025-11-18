@@ -17,6 +17,7 @@ impl Stage for ExpandDataset {
     }
 
     async fn run(self: Box<Self>, mut ctx: Context) -> Result<Context> {
+        println!("Running stage {}...", self.name());
         let large_data_path = &ctx.cache_dir.join("large");
         let large_census_parquet_path = large_data_path.join("census.parquet");
         let lf = if !large_census_parquet_path.exists() {

@@ -185,7 +185,8 @@ pub(crate) async fn get_table_count_if_exists(
         WHERE table_schema = 'public'
           AND table_name = $1
     )
-    "#,
+    "#
+        .trim(),
     )
     .bind(table_name)
     .fetch_one(pool)
