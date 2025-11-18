@@ -3,6 +3,8 @@ use crate::pipeline::{Stage, context::Context};
 
 use anyhow::Result;
 use tokio::fs;
+use tracing::info;
+#[derive(Debug)]
 pub struct LoadRawData;
 
 #[async_trait::async_trait]
@@ -11,11 +13,12 @@ impl Stage for LoadRawData {
         "load_raw_data"
     }
 
+    #[tracing::instrument]
     async fn run(self: Box<Self>, mut ctx: Context) -> Result<Context> {
-        println!("Running stage {}...", self.name());
-        println!("Ensuring raw census artefacts exist - downloading and processing if needed...");
-        let raw_data_path = &ctx.cache_dir.join("raw");
-        fs::create_dir_all(&raw_data_path).await?;
+        info!("Running stage {}...", self.name());
+        info!("Ensuring raw census artefacts exist - downloading and processing if needed...");
+        let raw_data_path = &ctx.raw_dir();
+        fs::create_dir_all(raw_data_path).await?;
 
         // Download the ONS micro census teaching sample from the public endpoint
         let micro_census_data_url = RAW_URL;

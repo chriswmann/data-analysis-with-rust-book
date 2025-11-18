@@ -51,12 +51,6 @@ impl Args {
     pub(crate) fn get_data_path(&self) -> path::PathBuf {
         self.get_project_root().join(&self.data_relative_path)
     }
-
-    /// Resolves the raw data directory where the original ONS CSV and intermediate artefacts
-    /// are stored before expansion.
-    pub(crate) fn get_raw_data_path(&self) -> path::PathBuf {
-        self.get_data_path().join(&self.raw_data_folder_name)
-    }
 }
 
 impl fmt::Display for Args {

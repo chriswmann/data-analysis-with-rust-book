@@ -15,42 +15,32 @@ use tracing::debug;
 pub(crate) struct S3Client {
     client: aws_sdk_s3::Client,
     region: String,
-    bucket_name: String,
 }
 
 impl S3Client {
     /// Constructs a client bound to the given bucket.
-    pub(crate) fn new(config: S3Config, bucket_name: String) -> Self {
+    pub(crate) fn new(config: S3Config) -> Self {
         let region = config.region.clone();
         let config = config.get_s3_config();
         let client = aws_sdk_s3::Client::from_conf(config.clone());
-        Self {
-            client,
-            region,
-            bucket_name,
-        }
-    }
-
-    /// Returns a clone of the configured bucket name.
-    pub(crate) fn get_bucket_name(&self) -> String {
-        self.bucket_name.clone()
+        Self { client, region }
     }
 
     /// Returns true if the configured bucket exists for the active credentials.
-    pub(crate) async fn bucket_exists(&self) -> Result<bool> {
+    pub(crate) async fn bucket_exists(&self, bucket_name: &str) -> Result<bool> {
         let bucket_list = self.client.list_buckets().send().await?;
 
         let bucket_found = bucket_list
             .buckets()
             .iter()
             .filter_map(|b| b.name())
-            .any(|name| name == self.bucket_name);
+            .any(|name| name == bucket_name);
 
         Ok(bucket_found)
     }
 
     /// Creates the configured bucket, honouring the region constraint.
-    pub(crate) async fn create_bucket(&self) -> Result<()> {
+    pub(crate) async fn create_bucket(&self, bucket_name: &str) -> Result<()> {
         let constraint = aws_sdk_s3::types::BucketLocationConstraint::from(self.region.as_str());
         let cfg = aws_sdk_s3::types::CreateBucketConfiguration::builder()
             .location_constraint(constraint)
@@ -58,7 +48,7 @@ impl S3Client {
         self.client
             .create_bucket()
             .create_bucket_configuration(cfg)
-            .bucket(self.bucket_name.as_str())
+            .bucket(bucket_name)
             .send()
             .await?;
 
@@ -66,11 +56,11 @@ impl S3Client {
     }
 
     /// Returns all object keys in the bucket, in lexicographic order.
-    pub(crate) async fn list_objects(&self) -> Result<Vec<String>> {
+    pub(crate) async fn list_objects(&self, bucket_name: &str) -> Result<Vec<String>> {
         let aws_object_list = self
             .client
             .list_objects_v2()
-            .bucket(&self.bucket_name)
+            .bucket(bucket_name)
             .send()
             .await?;
 
@@ -84,19 +74,19 @@ impl S3Client {
     }
 
     /// Deletes every object then removes the bucket (intended for ephemeral datasets).
-    pub(crate) async fn delete_bucket(&self) -> Result<()> {
-        debug!("Deleting bucket {}.", &self.bucket_name);
+    pub(crate) async fn delete_bucket(&self, bucket_name: &str) -> Result<()> {
+        debug!("Deleting bucket {}.", bucket_name);
         let objects_to_delete = self
             .client
             .list_objects_v2()
-            .bucket(&self.bucket_name)
+            .bucket(bucket_name)
             .send()
             .await?;
         for object in objects_to_delete.contents() {
             if let Some(key) = object.key() {
                 self.client
                     .delete_object()
-                    .bucket(&self.bucket_name)
+                    .bucket(bucket_name)
                     .key(key)
                     .send()
                     .await?;
@@ -104,7 +94,7 @@ impl S3Client {
         }
         self.client
             .delete_bucket()
-            .bucket(&self.bucket_name)
+            .bucket(bucket_name)
             .send()
             .await?;
         debug!("Bucket deleted.");
@@ -115,24 +105,27 @@ impl S3Client {
     pub(crate) async fn stream_chunked_parquet_to_s3(
         &self,
         file_path: &str,
+        bucket_name: &str,
         key: &str,
     ) -> Result<()> {
-        let s3_path = format!("s3://{}/{}", self.bucket_name, key);
+        let s3_path = format!("s3://{}/{}", bucket_name, key);
         debug!("Streaming to S3: {}", s3_path);
 
-        let upload_id = self.start_multipart_upload(key).await?;
-        let completed_parts = self.upload_file_parts(file_path, key, &upload_id).await?;
-        self.complete_multipart_upload(key, &upload_id, completed_parts)
+        let upload_id = self.start_multipart_upload(bucket_name, key).await?;
+        let completed_parts = self
+            .upload_file_parts(file_path, bucket_name, key, &upload_id)
+            .await?;
+        self.complete_multipart_upload(bucket_name, key, &upload_id, completed_parts)
             .await?;
         Ok(())
     }
 
     /// Starts a multipart upload and returns the upload ID required for subsequent parts.
-    async fn start_multipart_upload(&self, key: &str) -> Result<String> {
+    async fn start_multipart_upload(&self, bucket_name: &str, key: &str) -> Result<String> {
         let multipart = self
             .client
             .create_multipart_upload()
-            .bucket(&self.bucket_name)
+            .bucket(bucket_name)
             .key(key)
             .send()
             .await?;
@@ -147,6 +140,7 @@ impl S3Client {
     async fn upload_file_parts(
         &self,
         file_path: &str,
+        bucket_name: &str,
         key: &str,
         upload_id: &str,
     ) -> Result<Vec<aws_sdk_s3::types::CompletedPart>> {
@@ -179,7 +173,7 @@ impl S3Client {
             let upload_part = self
                 .client
                 .upload_part()
-                .bucket(&self.bucket_name)
+                .bucket(bucket_name)
                 .key(key)
                 .upload_id(upload_id)
                 .part_number(part_number)
@@ -207,13 +201,14 @@ impl S3Client {
     /// Finalises the multipart upload using the collected part metadata.
     async fn complete_multipart_upload(
         &self,
+        bucket_name: &str,
         key: &str,
         upload_id: &str,
         completed_parts: Vec<aws_sdk_s3::types::CompletedPart>,
     ) -> Result<()> {
         self.client
             .complete_multipart_upload()
-            .bucket(&self.bucket_name)
+            .bucket(bucket_name)
             .key(key)
             .upload_id(upload_id)
             .multipart_upload(
@@ -229,11 +224,11 @@ impl S3Client {
 
     /// Returns true if the given key exists, treating 404 as absence to avoid confusing network
     /// errors with a missing object.
-    pub(crate) async fn object_exists(&self, key: &str) -> Result<bool> {
+    pub(crate) async fn object_exists(&self, bucket_name: &str, key: &str) -> Result<bool> {
         let response = self
             .client
             .head_object()
-            .bucket(&self.bucket_name)
+            .bucket(bucket_name)
             .key(key)
             .send()
             .await;

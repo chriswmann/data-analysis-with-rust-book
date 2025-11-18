@@ -8,6 +8,8 @@ use crate::pipeline::{Stage, context::Context};
 
 use anyhow::Result;
 use tokio::fs;
+use tracing::info;
+#[derive(Debug)]
 pub struct ExpandDataset;
 
 #[async_trait::async_trait]
@@ -16,9 +18,10 @@ impl Stage for ExpandDataset {
         "expand_dataset"
     }
 
+    #[tracing::instrument]
     async fn run(self: Box<Self>, mut ctx: Context) -> Result<Context> {
-        println!("Running stage {}...", self.name());
-        let large_data_path = &ctx.cache_dir.join("large");
+        info!("Running stage {}...", self.name());
+        let large_data_path = &ctx.large_dir();
         let large_census_parquet_path = large_data_path.join("census.parquet");
         let lf = if !large_census_parquet_path.exists() {
             fs::create_dir_all(&large_data_path).await?;

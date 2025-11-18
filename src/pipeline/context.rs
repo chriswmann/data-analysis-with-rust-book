@@ -13,7 +13,24 @@ pub struct Context {
     pub expanded_frame: Option<LazyFrame>,
     pub db_pool: Option<Pool<Postgres>>,
     pub s3_client: Option<S3Client>,
+    pub table_name: Option<String>,
+    pub bucket_name: Option<String>,
     pub cache_dir: path::PathBuf,
+}
+
+impl std::fmt::Debug for Context {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Context")
+            .field("args", &self.args)
+            .field("raw_frame", &self.raw_frame.is_some())
+            .field("expanded_frame", &self.expanded_frame.is_some())
+            .field("db_pool", &self.db_pool)
+            .field("s3_client", &self.s3_client)
+            .field("table_name", &self.table_name)
+            .field("bucket_name", &self.bucket_name)
+            .field("cache_dir", &self.cache_dir)
+            .finish()
+    }
 }
 
 impl Context {
@@ -25,12 +42,22 @@ impl Context {
             expanded_frame: None,
             db_pool: None,
             s3_client: None,
+            table_name: None,
+            bucket_name: None,
             cache_dir,
         })
     }
 
     pub fn builder(args: &Args) -> ContextBuilder {
         ContextBuilder::new(args.clone())
+    }
+
+    pub fn raw_dir(&self) -> path::PathBuf {
+        self.cache_dir.join("raw")
+    }
+
+    pub fn large_dir(&self) -> path::PathBuf {
+        self.cache_dir.join("large")
     }
 }
 
@@ -76,6 +103,8 @@ pub struct ContextBuilder {
     expanded_frame: Option<LazyFrame>,
     db_pool: Option<Pool<Postgres>>,
     s3_client: Option<S3Client>,
+    table_name: Option<String>,
+    bucket_name: Option<String>,
     cache_dir: Option<path::PathBuf>,
 }
 
@@ -87,6 +116,8 @@ impl ContextBuilder {
             expanded_frame: None,
             db_pool: None,
             s3_client: None,
+            table_name: None,
+            bucket_name: None,
             cache_dir: Some(args.get_data_path()),
         }
     }
@@ -111,6 +142,15 @@ impl ContextBuilder {
         self
     }
 
+    pub fn with_table_name(mut self, table_name: String) -> Self {
+        self.table_name = Some(table_name);
+        self
+    }
+
+    pub fn with_bucket_name(mut self, bucket_name: String) -> Self {
+        self.bucket_name = Some(bucket_name);
+        self
+    }
     pub fn with_cache_dir(mut self, cache_dir: path::PathBuf) -> Self {
         self.cache_dir = Some(cache_dir);
         self
@@ -127,6 +167,8 @@ impl ContextBuilder {
             expanded_frame: self.expanded_frame,
             db_pool: self.db_pool,
             s3_client: self.s3_client,
+            table_name: self.table_name,
+            bucket_name: self.bucket_name,
             cache_dir,
         })
     }

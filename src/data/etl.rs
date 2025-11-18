@@ -69,21 +69,6 @@ fn try_read_csv_to_lf(file_path: &path::Path) -> Result<LazyFrame> {
     Ok(lf)
 }
 
-/// Collects a `LazyFrame` on a blocking task and streams the rows to a CSV writer.
-///
-/// The hand-off to `tokio::spawn_blocking` protects the async runtime from CPU-bound
-/// Polars work, while the Tokio file handle keeps the operation fully asynchronous.
-#[tracing::instrument(skip(lf))]
-pub(crate) async fn write_lf_to_csv(lf: LazyFrame, file_path: &path::Path) -> Result<()> {
-    let file = fs::File::create(file_path).await?;
-    let mut file = file.into_std().await;
-    let mut df = tokio::task::spawn_blocking(move || lf.clone().collect()).await??;
-
-    CsvWriter::new(&mut file).finish(&mut df)?;
-    println!("File saved to {}", file_path.display());
-    Ok(())
-}
-
 /// Lazily scans a parquet file, logging the path for easier traceability when multiple
 /// artefacts live side-by-side on disk.
 #[tracing::instrument]
@@ -104,6 +89,19 @@ pub(crate) fn try_read_parquet_to_lf(file_path: &path::Path) -> Result<LazyFrame
     Ok(lf)
 }
 
+/// Collects a `LazyFrame` on a blocking task and streams the rows to a CSV writer.
+///
+/// The hand-off to `tokio::spawn_blocking` protects the async runtime from CPU-bound
+/// Polars work, while the Tokio file handle keeps the operation fully asynchronous.
+#[tracing::instrument(skip(lf))]
+pub(crate) async fn write_lf_to_csv(lf: LazyFrame, file_path: &path::Path) -> Result<()> {
+    write_frame_with(lf, file_path, |file, df| {
+        CsvWriter::new(file).finish(df)?;
+        Ok(())
+    })
+    .await
+}
+
 /// Writes a collected `LazyFrame` into parquet, mirroring the CSV helper but targeting
 /// columnar storage for downstream analytics.
 #[tracing::instrument(skip(lf))]
@@ -117,6 +115,19 @@ pub(crate) async fn write_lf_to_parquet(lf: LazyFrame, file_path: &path::Path) -
     Ok(())
 }
 
+#[tracing::instrument(skip(lf, writer_fn))]
+async fn write_frame_with<F>(lf: LazyFrame, file_path: &path::Path, writer_fn: F) -> Result<()>
+where
+    F: FnOnce(&mut std::fs::File, &mut DataFrame) -> Result<()>,
+{
+    let file = fs::File::create(file_path).await?;
+    let mut file = file.into_std().await;
+    let mut df = tokio::task::spawn_blocking(move || lf.clone().collect()).await??;
+
+    writer_fn(&mut file, &mut df)?;
+    debug!("File saved to {}", file_path.display());
+    Ok(())
+}
 /// Returns a `LazyFrame` sourced from a cached CSV when available, falling back to a
 /// remote download that is persisted locally for future runs.
 #[tracing::instrument]
