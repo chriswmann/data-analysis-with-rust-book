@@ -36,22 +36,34 @@ impl Context {
 
 impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let raw_summary = self
+            .raw_frame
+            .as_ref()
+            .map(|lf| {
+                format!(
+                    "LazyFrame schema: {:?}",
+                    lf.clone().collect_schema().unwrap()
+                )
+            })
+            .unwrap_or_else(|| "None".into());
+
+        let expanded_summary = self
+            .expanded_frame
+            .as_ref()
+            .map(|lf| {
+                format!(
+                    "LazyFrame schema: {:?}",
+                    lf.clone().collect_schema().unwrap()
+                )
+            })
+            .unwrap_or_else(|| "None".into());
+
         write!(
             f,
-            "Args: {:?}, Raw Frame: {:?}, Expanded Frame: {:?}, DB Pool: {:?}, Cache Dir: {}",
+            "Args: {:?}, Raw Frame: {}, Expanded Frame: {}, DB Pool: {:?}, Cache Dir: {}",
             self.args,
-            self.raw_frame.clone().map_or("None".to_string(), |lf| lf
-                .limit(5)
-                .collect()
-                .unwrap()
-                .to_string()),
-            self.expanded_frame
-                .clone()
-                .map_or("None".to_string(), |lf| lf
-                    .limit(5)
-                    .collect()
-                    .unwrap()
-                    .to_string()),
+            raw_summary,
+            expanded_summary,
             self.db_pool,
             self.cache_dir.to_str().unwrap(),
         )

@@ -41,8 +41,8 @@ pub(crate) async fn load_lf_dynamic(
     lf: LazyFrame,
     table_name: &str,
 ) -> Result<()> {
-    let mut lf = lf;
-    let schema = lf.collect_schema()?;
+    let mut lf_for_schmea = lf.clone();
+    let schema = tokio::task::spawn_blocking(move || lf_for_schmea.collect_schema()).await??;
 
     // Extract column names and types for dynamic DDL
     let column_names: Vec<String> = schema.iter_fields().map(|f| f.name().to_string()).collect();
@@ -75,22 +75,23 @@ pub(crate) async fn load_lf_dynamic(
         debug!("SQL COPY offset: {}", offset);
         // Evaluate one window of the lazy plan
         let chunk_lf = lf.clone().slice(offset, ROWS_PER_BATCH);
-        let chunk_df = tokio::task::spawn_blocking(move || chunk_lf.collect()).await??;
 
-        let chunk_df_height = chunk_df.height();
+        // Render the chunk to CSV bytes in a blocking task
+        let (csv_bytes, chunk_df_height) =
+            tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, usize)> {
+                let mut chunk_df = chunk_lf.collect()?;
+                let chunk_df_height = chunk_df.height();
+                let mut buffer = Vec::new();
+                CsvWriter::new(&mut buffer)
+                    .include_header(false)
+                    .finish(&mut chunk_df)?;
+                Ok((buffer, chunk_df_height))
+            })
+            .await??;
+
         if chunk_df_height == 0 {
             break;
         }
-        // Render the chunk to CSV bytes in a blocking task
-        let csv_bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
-            let mut df = chunk_df.clone();
-            let mut buffer = Vec::new();
-            CsvWriter::new(&mut buffer)
-                .include_header(false)
-                .finish(&mut df)?;
-            Ok(buffer)
-        })
-        .await??;
 
         copy_in.send(csv_bytes).await?;
         offset += chunk_df_height as i64;
