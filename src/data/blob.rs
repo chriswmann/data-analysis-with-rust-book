@@ -7,6 +7,10 @@ use anyhow::Result;
 use aws_sdk_s3::{
     error::SdkError, operation::head_object::HeadObjectError, primitives::ByteStream,
 };
+use polars::prelude::{
+    LazyFrame, PlPath, ScanArgsParquet,
+    cloud::{AmazonS3ConfigKey, CloudOptions},
+};
 use tokio::io::AsyncReadExt;
 use tracing::debug;
 
@@ -19,7 +23,7 @@ pub(crate) struct S3Client {
 
 impl S3Client {
     /// Constructs a client bound to the given bucket.
-    pub(crate) fn new(config: S3Config) -> Self {
+    pub(crate) fn new(config: &S3Config) -> Self {
         let region = config.region.clone();
         let config = config.get_s3_config();
         let client = aws_sdk_s3::Client::from_conf(config.clone());
@@ -243,9 +247,34 @@ impl S3Client {
             Err(err) => Err(err.into()),
         }
     }
+
+    pub(crate) async fn download_lf_from_s3(
+        &self,
+        s3_config: S3Config,
+        bucket_name: &str,
+        key: &str,
+    ) -> Result<LazyFrame> {
+        let cloud_options = CloudOptions::default().with_aws(vec![
+            (AmazonS3ConfigKey::AccessKeyId, s3_config.username),
+            (AmazonS3ConfigKey::SecretAccessKey, s3_config.password),
+            (AmazonS3ConfigKey::Region, s3_config.region),
+            (AmazonS3ConfigKey::Bucket, bucket_name.to_string()),
+            (AmazonS3ConfigKey::Endpoint, s3_config.url),
+        ]);
+        // Connect to LazyFrame (no data is brought into memory)
+        let lf_path = PlPath::from_str(format!("s3://{}/{}", bucket_name, key).as_str());
+        let args = ScanArgsParquet {
+            cloud_options: Some(cloud_options),
+            ..Default::default()
+        };
+        let lf = LazyFrame::scan_parquet(lf_path, args)?;
+
+        Ok(lf)
+    }
 }
 
 /// Configuration required to connect to an S3-compatible endpoint.
+#[derive(Clone, Debug)]
 pub(crate) struct S3Config {
     pub(crate) region: String,
     pub(crate) url: String,

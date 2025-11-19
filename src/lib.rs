@@ -9,10 +9,14 @@ use tracing::debug;
 
 mod cli;
 mod data;
+mod errors;
 mod pipeline;
 
 pub use crate::cli::Args;
-use crate::data::blob::{S3Client, S3Config};
+use crate::data::{
+    DataStore,
+    blob::{S3Client, S3Config},
+};
 use crate::pipeline::Pipeline;
 use crate::pipeline::context::Context;
 use data::rdbms::{PostgresConn, drop_table_if_exists};
@@ -56,13 +60,15 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         password: "minioadmin".into(),
     };
 
-    let s3_client = S3Client::new(s3_config);
+    let s3_client = S3Client::new(&s3_config);
 
     let bucket_name = "census";
     let ctx = Context::builder(&args)
         .with_cache_dir(args.get_data_path())
         .with_db_pool(pool)
+        .with_s3_config(s3_config)
         .with_s3_client(s3_client.clone())
+        .with_pg_conn(postgres_conn)
         .with_table_name(bucket_name.into())
         .with_bucket_name(bucket_name.into())
         .build()?;
@@ -70,7 +76,13 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         s3_client.delete_bucket(bucket_name).await?;
     };
 
-    let pipeline = Pipeline::new().await?;
+    let pipeline = Pipeline::builder(&args)
+        .with_data_source(args.get_prepared_data_source())
+        .with_persistence(DataStore::S3)
+        .with_persistence(DataStore::Postgres)
+        .with_data_source(DataStore::S3)
+        .with_data_source(DataStore::Postgres)
+        .build()?;
 
     let ctx = pipeline.run(ctx).await?;
 

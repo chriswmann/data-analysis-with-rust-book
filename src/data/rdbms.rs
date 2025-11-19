@@ -27,13 +27,6 @@ impl PostgresConn {
             self.user, self.password, self.host, self.port, self.database
         )
     }
-
-    pub(crate) fn get_instance_connection_string(&self) -> String {
-        format!(
-            "postgresql://{}:{}@{}:{}",
-            self.user, self.password, self.host, self.port,
-        )
-    }
 }
 
 /// Streams a `LazyFrame` into Postgres using the COPY protocol, automatically inferring
@@ -214,18 +207,22 @@ pub(crate) async fn load_lf_from_postgres(
     table_name: &str,
     pg_conn: &PostgresConn,
 ) -> Result<LazyFrame> {
-    let uri = pg_conn.get_instance_connection_string();
-    let source_conn = SourceConn::try_from(uri.as_str())?;
-    // Prepare query (london, aged 15 years and under)
-    let query = &[CXQuery::from(
-        "SELECT * FROM census WHERE region = 'E12000007' and age_group = 1",
-    )];
+    let uri = pg_conn.get_db_connection_string();
+    let table_name = table_name.to_string();
 
-    // ConnectorX query PostgreSQL and return Polars object
-    let lf = get_arrow(&source_conn, None, query, None)
-        .unwrap()
-        .polars()
-        .unwrap()
-        .lazy();
+    let lf = tokio::task::spawn_blocking(move || {
+        let source_conn = SourceConn::try_from(uri.as_str())?;
+        // Prepare query (london, aged 15 years and under)
+        let query_str = format!(
+            "SELECT * FROM {} WHERE region = 'E12000007' and age_group = 1",
+            table_name
+        );
+        let query = &[CXQuery::from(query_str.as_str())];
+
+        // ConnectorX query PostgreSQL and return Polars object
+        let lf = get_arrow(&source_conn, None, query, None)?.polars()?.lazy();
+        Ok::<_, anyhow::Error>(lf)
+    })
+    .await??;
     Ok(lf)
 }
