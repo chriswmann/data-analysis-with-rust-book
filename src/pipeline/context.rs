@@ -8,9 +8,10 @@ use crate::cli::Args;
 use crate::data::blob::{S3Client, S3Config};
 
 use crate::data::rdbms::PostgresConn;
-
+use crate::pipeline::stages::DatasetConfig;
 pub struct Context {
     pub args: Args,
+    pub dataset_config: DatasetConfig,
     pub raw_frame: Option<LazyFrame>,
     pub expanded_frame: Option<LazyFrame>,
     pub db_pool: Option<Pool<Postgres>>,
@@ -26,6 +27,7 @@ impl std::fmt::Debug for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Context")
             .field("args", &self.args)
+            .field("dataset_config", &self.dataset_config)
             .field("raw_frame", &self.raw_frame.is_some())
             .field("expanded_frame", &self.expanded_frame.is_some())
             .field("db_pool", &self.db_pool)
@@ -40,10 +42,11 @@ impl std::fmt::Debug for Context {
 }
 
 impl Context {
-    pub fn _from_args(args: &Args) -> Result<Self> {
+    pub fn _from_args(args: &Args, dataset_config: DatasetConfig) -> Result<Self> {
         let cache_dir = args.get_data_path();
         Ok(Self {
             args: args.clone(),
+            dataset_config,
             raw_frame: None,
             expanded_frame: None,
             db_pool: None,
@@ -56,8 +59,8 @@ impl Context {
         })
     }
 
-    pub fn builder(args: &Args) -> ContextBuilder {
-        ContextBuilder::new(args.clone())
+    pub fn builder(args: &Args, dataset_config: DatasetConfig) -> ContextBuilder {
+        ContextBuilder::new(args.clone(), dataset_config)
     }
 
     pub fn raw_dir(&self) -> path::PathBuf {
@@ -107,6 +110,7 @@ impl std::fmt::Display for Context {
 
 pub struct ContextBuilder {
     args: Args,
+    dataset_config: DatasetConfig,
     raw_frame: Option<LazyFrame>,
     expanded_frame: Option<LazyFrame>,
     db_pool: Option<Pool<Postgres>>,
@@ -119,9 +123,10 @@ pub struct ContextBuilder {
 }
 
 impl ContextBuilder {
-    pub fn new(args: Args) -> Self {
+    pub fn new(args: Args, dataset_config: DatasetConfig) -> Self {
         Self {
             args: args.clone(),
+            dataset_config,
             raw_frame: None,
             expanded_frame: None,
             db_pool: None,
@@ -185,6 +190,7 @@ impl ContextBuilder {
 
         Ok(Context {
             args: self.args,
+            dataset_config: self.dataset_config,
             raw_frame: self.raw_frame,
             expanded_frame: self.expanded_frame,
             db_pool: self.db_pool,

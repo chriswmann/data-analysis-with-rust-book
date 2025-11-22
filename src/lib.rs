@@ -19,6 +19,7 @@ use crate::data::{
 };
 use crate::pipeline::Pipeline;
 use crate::pipeline::context::Context;
+use crate::pipeline::stages::DatasetConfig;
 use data::rdbms::{PostgresConn, drop_table_if_exists};
 
 /// Main ETL flow, orchestrating census data acquisition, expansion, and persistence
@@ -63,7 +64,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let s3_client = S3Client::new(&s3_config);
 
     let bucket_name = "census";
-    let ctx = Context::builder(&args)
+    let dataset_config = DatasetConfig::default();
+    let ctx = Context::builder(&args, dataset_config)
         .with_cache_dir(args.get_data_path())
         .with_db_pool(pool)
         .with_s3_config(s3_config)

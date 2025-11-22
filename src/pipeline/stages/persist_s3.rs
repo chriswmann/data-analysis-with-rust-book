@@ -29,7 +29,8 @@ impl Stage for PersistS3 {
             s3_client.create_bucket(bucket_name).await?;
         };
 
-        let file_path = ctx.cache_dir.join("large/census.parquet");
+        let expanded_s3_key = ctx.dataset_config.expanded_s3_key();
+        let file_path = ctx.cache_dir.join(expanded_s3_key.as_str());
 
         let object_exists = s3_client
             .object_exists(bucket_name, "large/census.parquet")
@@ -40,7 +41,7 @@ impl Stage for PersistS3 {
                 .stream_chunked_parquet_to_s3(
                     file_path.to_str().unwrap(),
                     bucket_name,
-                    "large/census.parquet",
+                    expanded_s3_key.as_str(),
                 )
                 .await?;
         } else {
