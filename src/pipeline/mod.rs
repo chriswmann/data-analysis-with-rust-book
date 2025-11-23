@@ -1,10 +1,8 @@
-/*! I'll use the type state pattern with HList and index patterns,
- * to define the states here.
- * This is a bit daft since what I'll actually do is add both S3 and PG
- * to the pipeline as sinks and sources of data. The CLI will then allow
- * the user to specify which source to use. But I'll keep the type state pattern
- * to enforce the order of the builder and to demonstrate a more advanced use of it.
-*/
+/*!
+ * Using the type state pattern with HList to define pipeline states.
+ * It's admittedly over-engineered given the CLI handles source selection,
+ * but it serves as a playground for enforcing builder order at compile time.
+ */
 #![allow(dead_code)]
 pub mod context;
 pub mod stage;
@@ -19,18 +17,14 @@ use anyhow::Result;
 
 use std::marker::PhantomData;
 
-// I'll keep the data store list at the type level
-// Top level stores Hlist
+// HList tracking configured data stores at the type level
 pub(crate) struct Nil;
 pub(crate) struct Cons<Head, Tail>(PhantomData<(Head, Tail)>);
 
-// Available stores
 pub(crate) struct Postgres;
 pub(crate) struct S3;
 
-// Relationship check
-// Using the type-level selector/index pattern to
-// disambiguate implementations
+// Type-level selector/index pattern for implementation disambiguation
 pub(crate) struct Here;
 pub(crate) struct There<Index>(PhantomData<Index>);
 
@@ -43,18 +37,17 @@ impl<T, Head, Tail, Index> Contains<T, There<Index>> for Cons<Head, Tail> where
 {
 }
 
-// State markers
+// Markers for the type state machine
 pub(crate) struct Start;
 pub(crate) struct PersistState<Stores>(PhantomData<Stores>);
 pub(crate) struct LoadState<Stores>(PhantomData<Stores>);
 pub(crate) struct Compete;
 
-pub(crate) struct Pipeline<State> {
+pub struct Pipeline<State> {
     stages: Vec<Box<dyn Stage>>,
     state: PhantomData<State>,
 }
 
-// Build the pipeline
 impl Pipeline<Start> {
     pub(crate) fn builder() -> Pipeline<PersistState<Nil>> {
         Pipeline {
@@ -64,7 +57,6 @@ impl Pipeline<Start> {
     }
 }
 
-// Add persistence layer(s) to the pipeline
 impl<Stores> Pipeline<PersistState<Stores>> {
     pub(crate) fn with_postgres_persistence(
         self,
@@ -76,7 +68,6 @@ impl<Stores> Pipeline<PersistState<Stores>> {
         self.add_persistence_stage(PersistS3)
     }
 
-    // Helper function to add a persistence stage to the pipeline
     fn add_persistence_stage<S, Store>(
         self,
         store: S,
@@ -93,7 +84,7 @@ impl<Stores> Pipeline<PersistState<Stores>> {
     }
 }
 
-// Add first retrieval layer to the pipeline
+// Enforce that retrieval layers come after persistence
 impl<Stores> Pipeline<PersistState<Stores>> {
     pub(crate) fn with_postgres_retrieval(self) -> Pipeline<LoadState<Cons<Postgres, Stores>>> {
         add_load_stage(self.stages, LoadFromPostgres)
@@ -104,9 +95,7 @@ impl<Stores> Pipeline<PersistState<Stores>> {
     }
 }
 
-// Add second retrieval layer to the pipeline.
-// We will only use one retrieval layer, as specified by the CLI arguments, but
-// but we'll do it this way to demonstrate the type state pattern.
+// Demonstration: we can chain retrieval layers (even if the CLI only uses one)
 impl<Stores> Pipeline<LoadState<Cons<S3, Stores>>> {
     pub(crate) fn with_postgres_retrieval(self) -> Pipeline<LoadState<Cons<Postgres, Stores>>> {
         add_load_stage(self.stages, LoadFromPostgres)
@@ -131,7 +120,7 @@ where
         state: PhantomData,
     }
 }
-// Finish by adding the Complete state
+// Finalise the pipeline for execution
 impl<Stores> Pipeline<LoadState<Stores>> {
     pub(crate) fn finish(self) -> Pipeline<Compete> {
         Pipeline {

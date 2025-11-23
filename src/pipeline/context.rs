@@ -9,6 +9,8 @@ use crate::data::blob::{S3Client, S3Config};
 
 use crate::data::rdbms::PostgresConn;
 use crate::pipeline::stages::DatasetConfig;
+
+/// The state container that flows through the pipeline.
 pub struct Context {
     pub args: Args,
     pub dataset_config: DatasetConfig,
@@ -72,6 +74,7 @@ impl Context {
     }
 }
 
+// Custom display to print schemas of the contained LazyFrames without dumping the whole thing.
 impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let raw_summary = self
@@ -108,6 +111,8 @@ impl std::fmt::Display for Context {
     }
 }
 
+/// Builder to piece together the context, necessary given the number of optional connections (S3, Postgres)
+/// and configuration.
 pub struct ContextBuilder {
     args: Args,
     dataset_config: DatasetConfig,
@@ -184,6 +189,7 @@ impl ContextBuilder {
     }
 
     pub fn build(self) -> Result<Context> {
+        // Ensure we have a valid cache directory before finalising.
         let cache_dir = self
             .cache_dir
             .ok_or_else(|| anyhow::anyhow!("Cache directory must be provided "))?;
