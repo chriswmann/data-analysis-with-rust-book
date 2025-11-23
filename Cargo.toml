@@ -11,7 +11,7 @@ name = "data-analysis-with-rust-book"
 path = "src/bin/main.rs"
 
 [[example]]
-name = "etl_example"
+name = "etl_only"
 path = "examples/etl_only.rs"
 
 [[example]]

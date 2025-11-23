@@ -6,6 +6,7 @@
 //! and idempotent.
 
 use tracing::debug;
+use tracing_subscriber::prelude::*;
 
 mod cli;
 mod data;
@@ -29,6 +30,19 @@ use data::rdbms::drop_table_if_exists;
 /// 4. Configure S3 and optionally recreate the bucket.
 /// 5. Upload the large parquet artefact if it's missing from object storage.
 pub async fn run(args: Args) -> anyhow::Result<()> {
+    // Initialise structured logging with tracing, letting RUST_LOG control verbosity
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .compact()
+        .with_file(true)
+        .with_line_number(true)
+        .with_thread_ids(true)
+        .with_target(false);
+
+    tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     // Define all of the local file paths, so we can check if they exist
     // to avoid unneeded processing
 

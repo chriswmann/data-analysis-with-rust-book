@@ -282,6 +282,17 @@ pub struct S3Config {
     pub password: String,
 }
 
+impl Default for S3Config {
+    fn default() -> Self {
+        Self {
+            region: "eu-west-1".into(),
+            url: "http://127.0.0.1:9000".into(),
+            username: "minioadmin".into(),
+            password: "minioadmin".into(),
+        }
+    }
+}
+
 impl S3Config {
     /// Builds static credentials from the username/password pair.
     fn get_credentials(&self) -> aws_sdk_s3::config::Credentials {

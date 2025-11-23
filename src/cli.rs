@@ -53,11 +53,11 @@ pub struct Args {
 pub(crate) struct DataLoadGroup {
     /// Use postgres to load data from
     #[arg(long)]
-    pub(crate) use_postgres_data: bool,
+    pub(crate) load_from_postgres: bool,
 
     /// Use S3 to load data from
     #[arg(long)]
-    pub(crate) use_s3_data: bool,
+    pub(crate) load_from_s3: bool,
 }
 
 impl Args {
@@ -73,7 +73,7 @@ impl Args {
     ///
     /// This directory will contain both `raw/` and `large/` subdirectories for the census
     /// datasets at different stages of processing.
-    pub(crate) fn get_data_path(&self) -> path::PathBuf {
+    pub fn get_data_path(&self) -> path::PathBuf {
         self.get_project_root().join(&self.data_relative_path)
     }
 }
