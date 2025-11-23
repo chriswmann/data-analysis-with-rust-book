@@ -16,6 +16,8 @@ pub struct Context {
     pub dataset_config: DatasetConfig,
     pub raw_frame: Option<LazyFrame>,
     pub expanded_frame: Option<LazyFrame>,
+    pub simple_filter_frame: Option<LazyFrame>,
+    pub complex_filter_frame: Option<LazyFrame>,
     pub db_pool: Option<Pool<Postgres>>,
     pub pg_conn: Option<PostgresConn>,
     pub s3_client: Option<S3Client>,
@@ -32,6 +34,8 @@ impl std::fmt::Debug for Context {
             .field("dataset_config", &self.dataset_config)
             .field("raw_frame", &self.raw_frame.is_some())
             .field("expanded_frame", &self.expanded_frame.is_some())
+            .field("simple_filter_frame", &self.simple_filter_frame.is_some())
+            .field("complex_filter_frame", &self.complex_filter_frame.is_some())
             .field("db_pool", &self.db_pool)
             .field("pg_conn", &self.pg_conn.is_some())
             .field("s3_client", &self.s3_client)
@@ -51,6 +55,8 @@ impl Context {
             dataset_config,
             raw_frame: None,
             expanded_frame: None,
+            simple_filter_frame: None,
+            complex_filter_frame: None,
             db_pool: None,
             pg_conn: None,
             s3_client: None,
@@ -118,6 +124,8 @@ pub struct ContextBuilder {
     dataset_config: DatasetConfig,
     raw_frame: Option<LazyFrame>,
     expanded_frame: Option<LazyFrame>,
+    simple_filter_frame: Option<LazyFrame>,
+    complex_filter_frame: Option<LazyFrame>,
     db_pool: Option<Pool<Postgres>>,
     pg_conn: Option<PostgresConn>,
     s3_client: Option<S3Client>,
@@ -134,6 +142,8 @@ impl ContextBuilder {
             dataset_config,
             raw_frame: None,
             expanded_frame: None,
+            simple_filter_frame: None,
+            complex_filter_frame: None,
             db_pool: None,
             pg_conn: None,
             s3_client: None,
@@ -199,6 +209,8 @@ impl ContextBuilder {
             dataset_config: self.dataset_config,
             raw_frame: self.raw_frame,
             expanded_frame: self.expanded_frame,
+            simple_filter_frame: None,
+            complex_filter_frame: None,
             db_pool: self.db_pool,
             pg_conn: self.pg_conn,
             s3_client: self.s3_client,

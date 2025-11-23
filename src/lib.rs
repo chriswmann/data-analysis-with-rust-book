@@ -5,7 +5,7 @@
 //! guards itself with filesystem or database existence checks so repeated runs remain fast
 //! and idempotent.
 
-use tracing::debug;
+use tracing::{debug, info};
 use tracing_subscriber::prelude::*;
 
 mod cli;
@@ -94,6 +94,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         .with_s3_persistence()
         .with_postgres_retrieval()
         .with_s3_retrieval()
+        .with_simple_filter_data()
+        .with_complex_filter_data()
         .finish();
 
     let ctx = pipeline.run(ctx).await?;
@@ -101,7 +103,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     debug!("Context:\n{}", ctx);
     // List all objects in the bucket to confirm the upload succeeded
     let bucket_objects = s3_client.list_objects(bucket_name).await?;
-    println!(
+    info!(
         "Found these objects in the {} bucket:\n{:#?}",
         bucket_name, &bucket_objects
     );

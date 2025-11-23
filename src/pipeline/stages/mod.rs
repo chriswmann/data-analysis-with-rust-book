@@ -1,5 +1,6 @@
 pub mod ensure_raw;
 pub mod expand_dataset;
+pub mod filters;
 pub mod load_from_postgres;
 pub mod load_from_s3;
 pub mod persist_postgres;

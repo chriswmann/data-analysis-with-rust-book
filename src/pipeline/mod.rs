@@ -9,8 +9,13 @@ pub mod stage;
 pub mod stages;
 
 use crate::pipeline::stages::{
-    ensure_raw::LoadRawData, expand_dataset::ExpandDataset, load_from_postgres::LoadFromPostgres,
-    load_from_s3::LoadFromS3, persist_postgres::PersistPostgres, persist_s3::PersistS3,
+    ensure_raw::LoadRawData,
+    expand_dataset::ExpandDataset,
+    filters::{ComplexDataFilter, SimpleDataFilter},
+    load_from_postgres::LoadFromPostgres,
+    load_from_s3::LoadFromS3,
+    persist_postgres::PersistPostgres,
+    persist_s3::PersistS3,
 };
 use crate::pipeline::{context::Context, stage::Stage};
 use anyhow::Result;
@@ -41,6 +46,8 @@ impl<T, Head, Tail, Index> Contains<T, There<Index>> for Cons<Head, Tail> where
 pub struct Start;
 pub struct PersistState<Stores>(PhantomData<Stores>);
 pub struct LoadState<Stores>(PhantomData<Stores>);
+
+pub struct AnalysisState;
 pub struct Compete;
 
 pub struct Pipeline<State> {
@@ -105,6 +112,22 @@ impl<Stores> Pipeline<LoadState<Cons<Postgres, Stores>>> {
     }
 }
 
+// Option to finalise the pipeline for execution
+impl<Stores> Pipeline<LoadState<Stores>> {
+    pub fn finish(self) -> Pipeline<Compete> {
+        Pipeline {
+            stages: self.stages,
+            state: PhantomData,
+        }
+    }
+}
+
+impl<Stores> Pipeline<LoadState<Stores>> {
+    pub fn with_simple_filter_data(self) -> Pipeline<AnalysisState> {
+        add_analysis_stage(self.stages, SimpleDataFilter)
+    }
+}
+
 fn add_load_stage<S, Store, Stores>(
     mut stages: Vec<Box<dyn Stage>>,
     stage: S,
@@ -114,12 +137,27 @@ where
 {
     stages.push(Box::new(stage));
     Pipeline {
-        stages: stages,
+        stages,
         state: PhantomData,
     }
 }
-// Finalise the pipeline for execution
-impl<Stores> Pipeline<LoadState<Stores>> {
+
+fn add_analysis_stage<S>(mut stages: Vec<Box<dyn Stage>>, stage: S) -> Pipeline<AnalysisState>
+where
+    S: Stage + 'static,
+{
+    stages.push(Box::new(stage));
+    Pipeline {
+        stages,
+        state: PhantomData,
+    }
+}
+
+impl Pipeline<AnalysisState> {
+    pub fn with_complex_filter_data(self) -> Pipeline<AnalysisState> {
+        add_analysis_stage(self.stages, ComplexDataFilter)
+    }
+
     pub fn finish(self) -> Pipeline<Compete> {
         Pipeline {
             stages: self.stages,

@@ -18,6 +18,10 @@ path = "examples/etl_only.rs"
 name = "summary_demo"
 path = "examples/summary_demo.rs"
 
+[[example]]
+name = "filter_data"
+path = "examples/filter_data.rs"
+
 [dependencies]
 anyhow = "1.0.86"
 aws-sdk-s3 = { version = "1.111.0", features = ["behavior-version-latest"] }
