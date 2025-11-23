@@ -1,10 +1,15 @@
+/*! I'll use the type state pattern with HList and index patterns,
+ * to define the states here.
+ * This is a bit daft since what I'll actually do is add both S3 and PG
+ * to the pipeline as sinks and sources of data. The CLI will then allow
+ * the user to specify which source to use. But I'll keep the type state pattern
+ * to enforce the order of the builder and to demonstrate a more advanced use of it.
+*/
+#![allow(dead_code)]
 pub mod context;
 pub mod stage;
 pub mod stages;
 
-use crate::cli::Args;
-use crate::data::DataStore;
-use crate::errors::{PipelineBuildError, PipelineValidationError};
 use crate::pipeline::stages::{
     ensure_raw::LoadRawData, expand_dataset::ExpandDataset, load_from_postgres::LoadFromPostgres,
     load_from_s3::LoadFromS3, persist_postgres::PersistPostgres, persist_s3::PersistS3,
@@ -12,112 +17,135 @@ use crate::pipeline::stages::{
 use crate::pipeline::{context::Context, stage::Stage};
 use anyhow::Result;
 
-pub struct Pipeline {
-    stages: Vec<Box<dyn Stage>>,
+use std::marker::PhantomData;
+
+// I'll keep the data store list at the type level
+// Top level stores Hlist
+pub(crate) struct Nil;
+pub(crate) struct Cons<Head, Tail>(PhantomData<(Head, Tail)>);
+
+// Available stores
+pub(crate) struct Postgres;
+pub(crate) struct S3;
+
+// Relationship check
+// Using the type-level selector/index pattern to
+// disambiguate implementations
+pub(crate) struct Here;
+pub(crate) struct There<Index>(PhantomData<Index>);
+
+trait Contains<T, Index> {}
+
+impl<T, Tail> Contains<T, Here> for Cons<T, Tail> {}
+
+impl<T, Head, Tail, Index> Contains<T, There<Index>> for Cons<Head, Tail> where
+    Tail: Contains<T, Index>
+{
 }
 
-impl Pipeline {
-    pub fn builder(args: &Args) -> PipelineBuilder {
-        PipelineBuilder::new(args)
+// State markers
+pub(crate) struct Start;
+pub(crate) struct PersistState<Stores>(PhantomData<Stores>);
+pub(crate) struct LoadState<Stores>(PhantomData<Stores>);
+pub(crate) struct Compete;
+
+pub(crate) struct Pipeline<State> {
+    stages: Vec<Box<dyn Stage>>,
+    state: PhantomData<State>,
+}
+
+// Build the pipeline
+impl Pipeline<Start> {
+    pub(crate) fn builder() -> Pipeline<PersistState<Nil>> {
+        Pipeline {
+            stages: vec![Box::new(LoadRawData), Box::new(ExpandDataset)],
+            state: PhantomData,
+        }
+    }
+}
+
+// Add persistence layer(s) to the pipeline
+impl<Stores> Pipeline<PersistState<Stores>> {
+    pub(crate) fn with_postgres_persistence(
+        self,
+    ) -> Pipeline<PersistState<Cons<Postgres, Stores>>> {
+        self.add_persistence_stage(PersistPostgres)
     }
 
-    pub async fn run(self, mut ctx: Context) -> Result<Context> {
+    pub(crate) fn with_s3_persistence(self) -> Pipeline<PersistState<Cons<S3, Stores>>> {
+        self.add_persistence_stage(PersistS3)
+    }
+
+    // Helper function to add a persistence stage to the pipeline
+    fn add_persistence_stage<S, Store>(
+        self,
+        store: S,
+    ) -> Pipeline<PersistState<Cons<Store, Stores>>>
+    where
+        S: Stage + 'static,
+    {
+        let mut stages = self.stages;
+        stages.push(Box::new(store));
+        Pipeline {
+            stages: stages,
+            state: PhantomData,
+        }
+    }
+}
+
+// Add first retrieval layer to the pipeline
+impl<Stores> Pipeline<PersistState<Stores>> {
+    pub(crate) fn with_postgres_retrieval(self) -> Pipeline<LoadState<Cons<Postgres, Stores>>> {
+        add_load_stage(self.stages, LoadFromPostgres)
+    }
+
+    pub(crate) fn with_s3_retrieval(self) -> Pipeline<LoadState<Cons<S3, Stores>>> {
+        add_load_stage(self.stages, LoadFromS3)
+    }
+}
+
+// Add second retrieval layer to the pipeline.
+// We will only use one retrieval layer, as specified by the CLI arguments, but
+// but we'll do it this way to demonstrate the type state pattern.
+impl<Stores> Pipeline<LoadState<Cons<S3, Stores>>> {
+    pub(crate) fn with_postgres_retrieval(self) -> Pipeline<LoadState<Cons<Postgres, Stores>>> {
+        add_load_stage(self.stages, LoadFromPostgres)
+    }
+}
+impl<Stores> Pipeline<LoadState<Cons<Postgres, Stores>>> {
+    pub(crate) fn with_s3_retrieval(self) -> Pipeline<LoadState<Cons<S3, Stores>>> {
+        add_load_stage(self.stages, LoadFromS3)
+    }
+}
+
+fn add_load_stage<S, Store, Stores>(
+    mut stages: Vec<Box<dyn Stage>>,
+    stage: S,
+) -> Pipeline<LoadState<Cons<Store, Stores>>>
+where
+    S: Stage + 'static,
+{
+    stages.push(Box::new(stage));
+    Pipeline {
+        stages: stages,
+        state: PhantomData,
+    }
+}
+// Finish by adding the Complete state
+impl<Stores> Pipeline<LoadState<Stores>> {
+    pub(crate) fn finish(self) -> Pipeline<Compete> {
+        Pipeline {
+            stages: self.stages,
+            state: PhantomData,
+        }
+    }
+}
+
+impl<Compete> Pipeline<Compete> {
+    pub(crate) async fn run(self, mut ctx: Context) -> Result<Context> {
         for stage in self.stages {
             ctx = stage.run(ctx).await?;
         }
         Ok(ctx)
-    }
-}
-
-pub(crate) struct PipelineBuilder {
-    args: Args,
-    ensure_raw_stage: LoadRawData,
-    expand_stage: ExpandDataset,
-    persist_pg_stage: Option<PersistPostgres>,
-    persist_s3_stage: Option<PersistS3>,
-    load_pg_stage: Option<LoadFromPostgres>,
-    load_s3_stage: Option<LoadFromS3>,
-}
-
-impl PipelineBuilder {
-    pub fn new(args: &Args) -> Self {
-        PipelineBuilder {
-            args: args.clone(),
-            ensure_raw_stage: LoadRawData,
-            expand_stage: ExpandDataset,
-            persist_pg_stage: None,
-            persist_s3_stage: None,
-            load_pg_stage: None,
-            load_s3_stage: None,
-        }
-    }
-
-    pub fn with_persistence(mut self, destination: DataStore) -> Self {
-        match destination {
-            DataStore::Postgres => self.persist_pg_stage = Some(PersistPostgres),
-            DataStore::S3 => self.persist_s3_stage = Some(PersistS3),
-        }
-        self
-    }
-
-    pub fn with_data_source(mut self, source: DataStore) -> Self {
-        match source {
-            DataStore::Postgres => self.load_pg_stage = Some(LoadFromPostgres),
-            DataStore::S3 => self.load_s3_stage = Some(LoadFromS3),
-        }
-
-        self
-    }
-
-    fn validate(&self) -> Result<()> {
-        let mut errors = Vec::new();
-        let at_least_one_persist_stage =
-            self.persist_pg_stage.is_some() || self.persist_s3_stage.is_some();
-        if !at_least_one_persist_stage {
-            errors.push(PipelineBuildError::AtLeastOnePersistStageMustBeSpecified);
-        }
-        let persist_and_load_stores_are_the_same = self.persist_pg_stage.is_some()
-            && self.load_pg_stage.is_some()
-            || self.persist_s3_stage.is_some() && self.load_s3_stage.is_some();
-        if !persist_and_load_stores_are_the_same {
-            errors.push(PipelineBuildError::PersistAndLoadStoresMustBeTheSame);
-        }
-
-        let args_specified_load_store_is_available = self.args.load.use_s3_data
-            && self.load_s3_stage.is_some()
-            || self.args.load.use_postgres_data && self.load_pg_stage.is_some();
-        if !args_specified_load_store_is_available {
-            let store = if self.args.load.use_s3_data {
-                "S3".to_string()
-            } else {
-                "Postgres".to_string()
-            };
-            errors.push(PipelineBuildError::ArgsLoadStoreNotAvailable(store));
-        }
-
-        if !errors.is_empty() {
-            return Err(PipelineValidationError { errors }.into());
-        }
-        Ok(())
-    }
-
-    pub fn build(self) -> Result<Pipeline> {
-        self.validate()?;
-        let mut stages: Vec<Box<dyn Stage>> = Vec::new();
-        stages.push(Box::new(self.ensure_raw_stage));
-        stages.push(Box::new(self.expand_stage));
-        if self.persist_pg_stage.is_some() {
-            stages.push(Box::new(self.persist_pg_stage.unwrap()));
-        }
-        if self.persist_s3_stage.is_some() && self.args.load.use_s3_data {
-            stages.push(Box::new(self.persist_s3_stage.unwrap()));
-        }
-        if self.load_pg_stage.is_some() {
-            stages.push(Box::new(self.load_pg_stage.unwrap()));
-        }
-        if self.load_s3_stage.is_some() {
-            stages.push(Box::new(self.load_s3_stage.unwrap()));
-        }
-        Ok(Pipeline { stages })
     }
 }

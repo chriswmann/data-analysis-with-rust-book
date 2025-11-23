@@ -9,14 +9,10 @@ use tracing::debug;
 
 mod cli;
 mod data;
-mod errors;
 mod pipeline;
 
 pub use crate::cli::Args;
-use crate::data::{
-    DataStore,
-    blob::{S3Client, S3Config},
-};
+use crate::data::blob::{S3Client, S3Config};
 use crate::pipeline::Pipeline;
 use crate::pipeline::context::Context;
 use crate::pipeline::stages::DatasetConfig;
@@ -78,13 +74,12 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         s3_client.delete_bucket(bucket_name).await?;
     };
 
-    let pipeline = Pipeline::builder(&args)
-        .with_data_source(args.get_prepared_data_source())
-        .with_persistence(DataStore::S3)
-        .with_persistence(DataStore::Postgres)
-        .with_data_source(DataStore::S3)
-        .with_data_source(DataStore::Postgres)
-        .build()?;
+    let pipeline = Pipeline::builder()
+        .with_postgres_persistence()
+        .with_s3_persistence()
+        .with_postgres_retrieval()
+        .with_s3_retrieval()
+        .finish();
 
     let ctx = pipeline.run(ctx).await?;
 

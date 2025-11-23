@@ -4,8 +4,6 @@
 //! stored, whether to rebuild existing artefacts, and how to handle bucket lifecycle.
 //! All path-related arguments are resolved relative to a configurable project root.
 
-use crate::data::DataStore;
-
 use clap::Parser;
 use std::{env, fmt, path};
 
@@ -77,14 +75,6 @@ impl Args {
     /// datasets at different stages of processing.
     pub(crate) fn get_data_path(&self) -> path::PathBuf {
         self.get_project_root().join(&self.data_relative_path)
-    }
-
-    pub(crate) fn get_prepared_data_source(&self) -> DataStore {
-        if self.load.use_postgres_data {
-            DataStore::Postgres
-        } else {
-            DataStore::S3
-        }
     }
 }
 
