@@ -23,7 +23,7 @@ This starts:
 From the project root:
 
 ```bash
-cargo run -- [OPTIONS]
+cargo run -- --load-from-postgres  # or --load-from-s3
 ```
 
 On first run this will:
@@ -33,21 +33,29 @@ On first run this will:
 - Expand the dataset to a larger parquet and CSV.
 - Load the expanded data into Postgres.
 - Upload the large parquet file to the `census` bucket in MinIO.
+- Retrieve the dataset from the selected source (Postgres in the example above).
 
 ### CLI arguments
 
-All arguments are optional; defaults are shown in brackets.
+You must provide one of the load source flags (`--load-from-postgres` or `--load-from-s3`). All other arguments are optional; defaults are shown in brackets.
+
+**Required (choose one):**
+
+- **`--load-from-postgres`**: Load the final dataset context from Postgres.
+- **`--load-from-s3`**: Load the final dataset context from S3.
+
+**Optional:**
 
 - **`--project-root <PATH>`**: Project root absolute path. Defaults to the current working directory.
 - **`--data-relative-path <PATH>`**: Data directory relative to the project root. Defaults to `data`.
 - **`--raw-data-folder-name <PATH>`**: Subdirectory for raw data. Defaults to `raw`.
-- **`--rebuild-db`**: If set, drops and reloads the `census` table in Postgres even if it already contains data.
+- **`--delete-table`**: If set, drops and reloads the `census` table in Postgres even if it already contains data.
 - **`--delete-bucket`**: If set, deletes and recreates the `census` bucket in MinIO before uploading.
 
 Example with a custom data directory and forced DB rebuild:
 
 ```bash
-cargo run -- --data-relative-path my-data --rebuild-db
+cargo run -- --load-from-postgres --data-relative-path my-data --delete-table
 ```
 
 ### License
