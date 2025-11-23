@@ -6,7 +6,7 @@ pub mod persist_postgres;
 pub mod persist_s3;
 
 #[derive(Clone, Debug)]
-pub(crate) struct DatasetConfig {
+pub struct DatasetConfig {
     pub(crate) expanded_dir_name: String,
     pub(crate) filename: String,
 }

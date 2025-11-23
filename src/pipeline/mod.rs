@@ -18,15 +18,15 @@ use anyhow::Result;
 use std::marker::PhantomData;
 
 // HList tracking configured data stores at the type level
-pub(crate) struct Nil;
-pub(crate) struct Cons<Head, Tail>(PhantomData<(Head, Tail)>);
+pub struct Nil;
+pub struct Cons<Head, Tail>(PhantomData<(Head, Tail)>);
 
-pub(crate) struct Postgres;
-pub(crate) struct S3;
+pub struct Postgres;
+pub struct S3;
 
 // Type-level selector/index pattern for implementation disambiguation
-pub(crate) struct Here;
-pub(crate) struct There<Index>(PhantomData<Index>);
+pub struct Here;
+pub struct There<Index>(PhantomData<Index>);
 
 trait Contains<T, Index> {}
 
@@ -38,10 +38,10 @@ impl<T, Head, Tail, Index> Contains<T, There<Index>> for Cons<Head, Tail> where
 }
 
 // Markers for the type state machine
-pub(crate) struct Start;
-pub(crate) struct PersistState<Stores>(PhantomData<Stores>);
-pub(crate) struct LoadState<Stores>(PhantomData<Stores>);
-pub(crate) struct Compete;
+pub struct Start;
+pub struct PersistState<Stores>(PhantomData<Stores>);
+pub struct LoadState<Stores>(PhantomData<Stores>);
+pub struct Compete;
 
 pub struct Pipeline<State> {
     stages: Vec<Box<dyn Stage>>,
@@ -49,7 +49,7 @@ pub struct Pipeline<State> {
 }
 
 impl Pipeline<Start> {
-    pub(crate) fn builder() -> Pipeline<PersistState<Nil>> {
+    pub fn builder() -> Pipeline<PersistState<Nil>> {
         Pipeline {
             stages: vec![Box::new(LoadRawData), Box::new(ExpandDataset)],
             state: PhantomData,
@@ -58,13 +58,11 @@ impl Pipeline<Start> {
 }
 
 impl<Stores> Pipeline<PersistState<Stores>> {
-    pub(crate) fn with_postgres_persistence(
-        self,
-    ) -> Pipeline<PersistState<Cons<Postgres, Stores>>> {
+    pub fn with_postgres_persistence(self) -> Pipeline<PersistState<Cons<Postgres, Stores>>> {
         self.add_persistence_stage(PersistPostgres)
     }
 
-    pub(crate) fn with_s3_persistence(self) -> Pipeline<PersistState<Cons<S3, Stores>>> {
+    pub fn with_s3_persistence(self) -> Pipeline<PersistState<Cons<S3, Stores>>> {
         self.add_persistence_stage(PersistS3)
     }
 
@@ -86,23 +84,23 @@ impl<Stores> Pipeline<PersistState<Stores>> {
 
 // Enforce that retrieval layers come after persistence
 impl<Stores> Pipeline<PersistState<Stores>> {
-    pub(crate) fn with_postgres_retrieval(self) -> Pipeline<LoadState<Cons<Postgres, Stores>>> {
+    pub fn with_postgres_retrieval(self) -> Pipeline<LoadState<Cons<Postgres, Stores>>> {
         add_load_stage(self.stages, LoadFromPostgres)
     }
 
-    pub(crate) fn with_s3_retrieval(self) -> Pipeline<LoadState<Cons<S3, Stores>>> {
+    pub fn with_s3_retrieval(self) -> Pipeline<LoadState<Cons<S3, Stores>>> {
         add_load_stage(self.stages, LoadFromS3)
     }
 }
 
 // Demonstration: we can chain retrieval layers (even if the CLI only uses one)
 impl<Stores> Pipeline<LoadState<Cons<S3, Stores>>> {
-    pub(crate) fn with_postgres_retrieval(self) -> Pipeline<LoadState<Cons<Postgres, Stores>>> {
+    pub fn with_postgres_retrieval(self) -> Pipeline<LoadState<Cons<Postgres, Stores>>> {
         add_load_stage(self.stages, LoadFromPostgres)
     }
 }
 impl<Stores> Pipeline<LoadState<Cons<Postgres, Stores>>> {
-    pub(crate) fn with_s3_retrieval(self) -> Pipeline<LoadState<Cons<S3, Stores>>> {
+    pub fn with_s3_retrieval(self) -> Pipeline<LoadState<Cons<S3, Stores>>> {
         add_load_stage(self.stages, LoadFromS3)
     }
 }
@@ -122,7 +120,7 @@ where
 }
 // Finalise the pipeline for execution
 impl<Stores> Pipeline<LoadState<Stores>> {
-    pub(crate) fn finish(self) -> Pipeline<Compete> {
+    pub fn finish(self) -> Pipeline<Compete> {
         Pipeline {
             stages: self.stages,
             state: PhantomData,
@@ -131,7 +129,7 @@ impl<Stores> Pipeline<LoadState<Stores>> {
 }
 
 impl<Compete> Pipeline<Compete> {
-    pub(crate) async fn run(self, mut ctx: Context) -> Result<Context> {
+    pub async fn run(self, mut ctx: Context) -> Result<Context> {
         for stage in self.stages {
             ctx = stage.run(ctx).await?;
         }

@@ -16,14 +16,14 @@ use tracing::debug;
 
 /// Minimal façade for the S3 operations required by the data workflows.
 #[derive(Clone, Debug)]
-pub(crate) struct S3Client {
+pub struct S3Client {
     client: aws_sdk_s3::Client,
     region: String,
 }
 
 impl S3Client {
     /// Constructs a client bound to the given bucket.
-    pub(crate) fn new(config: &S3Config) -> Self {
+    pub fn new(config: &S3Config) -> Self {
         let region = config.region.clone();
         let config = config.get_s3_config();
         let client = aws_sdk_s3::Client::from_conf(config.clone());
@@ -275,11 +275,11 @@ impl S3Client {
 
 /// Configuration required to connect to an S3-compatible endpoint.
 #[derive(Clone, Debug)]
-pub(crate) struct S3Config {
-    pub(crate) region: String,
-    pub(crate) url: String,
-    pub(crate) username: String,
-    pub(crate) password: String,
+pub struct S3Config {
+    pub region: String,
+    pub url: String,
+    pub username: String,
+    pub password: String,
 }
 
 impl S3Config {

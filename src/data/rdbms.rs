@@ -11,17 +11,17 @@ use sqlx::{Pool, Postgres};
 use tracing::debug;
 
 /// Encapsulates the connection parameters for a Postgres database.
-pub(crate) struct PostgresConn {
-    pub(crate) user: String,
-    pub(crate) password: String,
-    pub(crate) host: String,
-    pub(crate) port: i32,
-    pub(crate) database: String,
+pub struct PostgresConn {
+    pub user: String,
+    pub password: String,
+    pub host: String,
+    pub port: i32,
+    pub database: String,
 }
 
 impl PostgresConn {
     /// Formats the connection details into a standard PostgreSQL connection URI.
-    pub(crate) fn get_db_connection_string(&self) -> String {
+    pub fn get_db_connection_string(&self) -> String {
         format!(
             "postgresql://{}:{}@{}:{}/{}",
             self.user, self.password, self.host, self.port, self.database

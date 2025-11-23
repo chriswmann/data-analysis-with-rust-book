@@ -12,11 +12,12 @@ mod data;
 mod pipeline;
 
 pub use crate::cli::Args;
-use crate::data::blob::{S3Client, S3Config};
-use crate::pipeline::Pipeline;
-use crate::pipeline::context::Context;
-use crate::pipeline::stages::DatasetConfig;
-use data::rdbms::{PostgresConn, drop_table_if_exists};
+pub use crate::data::blob::{S3Client, S3Config};
+pub use crate::pipeline::Pipeline; // Re-export Pipeline since we need these for the examples
+pub use crate::pipeline::context::Context; // Re-export Context since we need this for the examples
+pub use crate::pipeline::stages::DatasetConfig; // Re-export DatasetConfig since we need this for the examples
+pub use data::rdbms::PostgresConn;
+use data::rdbms::drop_table_if_exists;
 
 /// Main ETL flow, orchestrating census data acquisition, expansion, and persistence
 /// into both Postgres (via COPY protocol) and MinIO (via S3 multipart upload).
